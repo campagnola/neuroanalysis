@@ -1,3 +1,4 @@
+from collections import OrderedDict
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui, QtCore
 #import pyqtgraph.flowchart
@@ -8,6 +9,108 @@ import scipy.ndimage as ndi
 import functions as fn
 
 
+
+class CellSelector(QtCore.QObject):
+    """Select a single cell from a list of cells or from an image.
+    
+    Signals
+    -------
+    cellSelectionChanged(id)
+        Emitted when the selected cell ID has changed.
+    """
+    cellSelectionChanged = QtCore.Signal(object)
+    
+    def __init__(self):
+        QtCore.QObject.__init__(self)
+        self.params = pt.Parameter(name='Cell selection', type='group', children=[
+            {'name': 'cell id', 'type': 'list', 'value': None, 'values': {'': None}},
+        ])
+        self.fluor_img = None
+        self.roi_img = None
+        self.cell_ids = []
+        self.imv = None
+        self.roi_img_item = None
+        self.params.child('cell id').sigValueChanged.connect(self._selection_changed)
+        
+    def selected_id(self):
+        return self.params['cell id']
+        
+    def set_cell_ids(self, ids):
+        """Set the list of available cell IDs.
+        
+        Parameters
+        ----------
+        ids : list or ndarray
+            Any sequence of integer IDs corresponding to the selectable cells.
+        """
+        self.cell_ids = ids
+        opts = [('', None)] + [(str(i), i) for i in ids]
+        self.params.child('cell id').setLimits(OrderedDict(opts))
+        
+    def set_images(self, fluor_img, roi_img, update_ids=True):
+        """Set the images used for visual cell selection.
+        
+        Parameters
+        ----------
+        fluor_img : ndarray
+            Fluorescence image of cells to display.
+        roi_img : ndarray (integer dtype)
+            Array containing the cell ID associated with each pixel in the 
+            fluorescence image. Pixels with no associated cell should have
+            negative value.
+        update_ids : bool
+            Set the cell ID list from the unique values in *rois*.
+        """
+        self.fluor_img = fluor_img
+        self.roi_img = roi_img
+        if update_ids:
+            ids = np.unique(roi_img)
+            self.set_cell_ids(ids[ids >= 0])
+        self._update_images()
+        
+    def set_imageview(self, imv):
+        """Connect this selector to an ImageView instance.
+        
+        This causes the fluorescence image and selected cell's ROI to be displayed
+        in the view, and also allows cells to be selected by clicking in the view.
+        
+        Parameters
+        ----------
+        imv : pyqtgraph.ImageView
+            The view widget to use for image display.
+        """
+        self.imv = imv
+        self.roi_img_item = pg.ImageItem()
+        
+        imv.view.addItem(self.roi_img_item)
+        lut = np.zeros((256,3), dtype='ubyte')
+        lut[:,2] = np.arange(256)
+        self.roi_img_item.setLookupTable(lut)
+        self.roi_img_item.setZValue(20)
+        self.roi_img_item.setCompositionMode(QtGui.QPainter.CompositionMode_Plus)
+        imv.view.scene().sigMouseClicked.connect(self._imview_clicked)
+        self._update_images()
+        
+    def _update_images(self):
+        if self.imv is None:
+            return
+        if self.fluor_img is not None:
+            self.imv.setImage(self.fluor_img.T)
+            
+        cell_id = self.selected_id()
+        if cell_id is not None:
+            self.roi_img_item.setImage(self.roi_img.T == cell_id)
+
+    def _imview_clicked(self, event):
+        pos = self.roi_img_item.mapFromScene(event.pos())
+        cell_id = self.roi_img[int(pos.y()), int(pos.x())]
+        if cell_id < 0:
+            return
+        self.params['cell id'] = cell_id
+    
+    def _selection_changed(self):
+        self._update_images()
+        self.cellSelectionChanged.emit(self.selected_id())
 
 
 class SpikeDetector(QtGui.QWidget):
@@ -21,9 +124,11 @@ class SpikeDetector(QtGui.QWidget):
         self.lsn_on[self.lsn_on == 0] = 127
         
         cells = self.data_set.get_cell_specimen_ids()
-        #cells.sort()
-        self.cell_mask = (self.data_set.get_roi_mask_array() * np.array(cells)[:,None,None]).max(axis=0)
-        self.cell_id = cell_id
+        self.cell_selector = CellSelector()
+        
+        roi_img = (self.data_set.get_roi_mask_array() * np.array(cells)[:,None,None]).max(axis=0)
+        max_img = self.data_set.get_max_projection()
+        self.cell_selector.set_images(max_img, roi_img)
         
         # make stimulus frame locations easier to look up
         self.lsn_id = None
@@ -36,8 +141,7 @@ class SpikeDetector(QtGui.QWidget):
         self.vs1.setOrientation(pg.QtCore.Qt.Vertical)
 
         self.params = pt.Parameter(name='params', type='group', children=[
-            #{'name': 'container id', 'type': 'list', 'value': cont_id, 'values': list(cont_ids)},
-            {'name': 'cell id', 'type': 'list', 'value': cell_id, 'values': sorted(list(cells))},
+            self.cell_selector.params,
             {'name': 'gaussian sigma', 'type': 'float', 'value': 2.0},
             {'name': 'deconv const', 'type': 'float', 'value': 0.04},
             {'name': 'on/off', 'type': 'list', 'values': ['on', 'off', 'any']},
@@ -50,14 +154,7 @@ class SpikeDetector(QtGui.QWidget):
         self.vs1.addWidget(self.tree)
 
         self.expt_imv = pg.ImageView()
-        self.cell_roi_img = pg.ImageItem()
-        self.expt_imv.view.addItem(self.cell_roi_img)
-        lut = np.zeros((256,3), dtype='ubyte')
-        lut[:,2] = np.arange(256)
-        self.cell_roi_img.setLookupTable(lut)
-        self.cell_roi_img.setZValue(20)
-        self.cell_roi_img.setCompositionMode(QtGui.QPainter.CompositionMode_Plus)
-        self.expt_imv.view.scene().sigMouseClicked.connect(self.imageSceneClicked)
+        self.cell_selector.set_imageview(self.expt_imv)
         
         self.vs1.addWidget(self.expt_imv)
 
@@ -95,7 +192,8 @@ class SpikeDetector(QtGui.QWidget):
         self.layout.addWidget(self.hs)
         
         self.show()
-
+        
+        self.cell_selector.cellSelectionChanged.connect(self.loadCell)
         self.params.sigTreeStateChanged.connect(self.paramsChanged)
         self.tLine.sigPositionChanged.connect(self.updateSpikes)
         #fc.sigStateChanged.connect(fcChanged)
@@ -103,18 +201,16 @@ class SpikeDetector(QtGui.QWidget):
 
     def paramsChanged(self, root, changes):
         for param, change, val in changes:
-            if param is self.params.child('cell id'):
-                self.loadCell()
-            elif param in (self.params.child('gaussian sigma'), self.params.child('deconv const')):
+            if param in (self.params.child('gaussian sigma'), self.params.child('deconv const')):
                 self.updateSpikes()
-            else:
+            elif param in (self.params.child('on/off'), self.params.child('delay'), self.params.child('delay range')):
                 self.updateOutput()
-                
+
     def loadCell(self):
+        cell_id = self.cell_selector.selected_id()
+        if cell_id is None:
+            return
         
-        self.expt_imv.setImage(self.data_set.get_max_projection().T)
-        
-        cell_id = self.params['cell id']
         data = self.data_set.get_dff_traces([cell_id])
         
         if self.lsn_id is None:
@@ -122,13 +218,11 @@ class SpikeDetector(QtGui.QWidget):
             self.lsn_id = np.zeros(len(data[0]), dtype='int') - 1
             for i,frame in lsn_st.iterrows():
                 self.lsn_id[frame['start']:frame['end']] = frame['frame']
-                
-        self.cell_roi_img.setImage(self.data_set.get_roi_mask_array([cell_id])[0].T)
         
         self.updateSpikes()
 
     def updateSpikes(self):
-        cell_id = self.params['cell id']
+        cell_id = self.cell_selector.selected_id()
         self.data = self.data_set.get_dff_traces([cell_id])
         #filtered = fc['dataOut'].value()
         #if filtered is None:
@@ -179,10 +273,3 @@ class SpikeDetector(QtGui.QWidget):
                 sta[i] = (lsn_frames[frames[mask]] * self.events['sum'][mask][:,None,None]).mean(axis=0)
             sta /= sta.mean(axis=1).mean(axis=1)[:,None,None]
             self.sta_imv.setImage(sta.transpose(0, 2, 1), xvals=np.arange(-offset, -offset+nframes) * dt)
-
-    def imageSceneClicked(self, ev):
-        pos = self.cell_roi_img.mapFromScene(ev.pos())
-        cell_id = self.cell_mask[int(pos.y()), int(pos.x())]
-        if cell_id == 0:
-            return
-        self.params['cell id'] = cell_id
