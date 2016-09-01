@@ -3,7 +3,7 @@ import numpy as np
 import pyqtgraph as pg
 from allensdk.core.brain_observatory_cache import BrainObservatoryCache
 from allensdk.brain_observatory.locally_sparse_noise import LocallySparseNoise
-from tools import SpikeDetector
+from tools import STAAnalyzer
 import user
 
 
@@ -34,4 +34,4 @@ cont_ids = np.unique([x['experiment_container_id'] for x in boc.get_ophys_experi
 
 pg.mkQApp()
 
-sd = SpikeDetector(boc, expt_id, cell_id)
+sd = STAAnalyzer(boc, expt_id, cell_id)

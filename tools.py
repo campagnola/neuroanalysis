@@ -113,7 +113,15 @@ class CellSelector(QtCore.QObject):
         self.cellSelectionChanged.emit(self.selected_id())
 
 
-class SpikeDetector(QtGui.QWidget):
+class GaussianFilter(QtCore.QObject):
+    pass
+
+class SpikeDetector(QtCore.QObject):
+    pass
+    
+    
+
+class STAAnalyzer(QtGui.QWidget):
     def __init__(self, boc, expt_id, cell_id):
         self.boc = boc
         self.data_set = boc.get_ophys_experiment_data(ophys_experiment_id=expt_id)
@@ -143,10 +151,11 @@ class SpikeDetector(QtGui.QWidget):
         self.params = pt.Parameter(name='params', type='group', children=[
             self.cell_selector.params,
             {'name': 'gaussian sigma', 'type': 'float', 'value': 2.0},
-            {'name': 'deconv const', 'type': 'float', 'value': 0.04},
-            {'name': 'on/off', 'type': 'list', 'values': ['on', 'off', 'any']},
-            {'name': 'delay', 'type': 'float', 'value': 0.1, 'suffix': 's', 'siPrefix': True, 'step': 50e-3},
-            {'name': 'delay range', 'type': 'float', 'value': 0, 'limits': [0,None], 'suffix': 's', 'siPrefix': True, 'step': 50e-3},
+            {'name': 'deconv const', 'type': 'float', 'value': 0.04, 'step': 0.01},
+            {'name': 'on/off', 'type': 'list', 'values': ['any', 'on', 'off']},
+            {'name': 'delay', 'type': 'float', 'value': -0.2, 'suffix': 's', 'siPrefix': True, 'step': 50e-3},
+            {'name': 'delay range', 'type': 'float', 'value': 1.0, 'limits': [0,None], 'suffix': 's', 'siPrefix': True, 'step': 50e-3},
+            {'name': 'blur STA', 'type': 'float', 'value': 1.0, 'limits': [0,None], 'step': 0.5},
         ])
 
         self.tree = pt.ParameterTree(showHeader=False)
@@ -203,7 +212,7 @@ class SpikeDetector(QtGui.QWidget):
         for param, change, val in changes:
             if param in (self.params.child('gaussian sigma'), self.params.child('deconv const')):
                 self.updateSpikes()
-            elif param in (self.params.child('on/off'), self.params.child('delay'), self.params.child('delay range')):
+            elif param in (self.params.child('on/off'), self.params.child('delay'), self.params.child('delay range'), self.params.child('blur STA')):
                 self.updateOutput()
 
     def loadCell(self):
@@ -255,12 +264,15 @@ class SpikeDetector(QtGui.QWidget):
             lsn_frames = self.lsn_tmp
         
         dr = self.params['delay range']
+        blur = self.params['blur STA']
         nframes = int(dr / dt)
         if nframes < 2:
             frames = self.lsn_id[inds]
             mask = frames > 0
             lsn_frames = lsn_frames[frames[mask]]
             sta = (lsn_frames * self.events['sum'][mask][:,None,None]).mean(axis=0)
+            if blur > 0:
+                sta = ndi.gaussian_filter(sta, blur)
             self.sta_imv.setImage(sta.T)
         else:
             offset = nframes // 2
@@ -272,4 +284,7 @@ class SpikeDetector(QtGui.QWidget):
                 mask = frames > 0
                 sta[i] = (lsn_frames[frames[mask]] * self.events['sum'][mask][:,None,None]).mean(axis=0)
             sta /= sta.mean(axis=1).mean(axis=1)[:,None,None]
+            if blur > 0:
+                sta = ndi.gaussian_filter(sta, (0, blur, blur))
             self.sta_imv.setImage(sta.transpose(0, 2, 1), xvals=np.arange(-offset, -offset+nframes) * dt)
+            self.sta_imv.setCurrentIndex(sta.shape[0]/2)
