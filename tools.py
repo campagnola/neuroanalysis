@@ -11,14 +11,14 @@ import functions as fn
 
 
 class CellSelector(QtCore.QObject):
-    """Select a single cell from a list of cells or from an image.
+    """Select a single cell from a list of cells or from a pre-segmented image.
     
     Signals
     -------
-    cellSelectionChanged(id)
+    cell_selection_changed(id)
         Emitted when the selected cell ID has changed.
     """
-    cellSelectionChanged = QtCore.Signal(object)
+    cell_selection_changed = QtCore.Signal(object)
     
     def __init__(self):
         QtCore.QObject.__init__(self)
@@ -33,6 +33,8 @@ class CellSelector(QtCore.QObject):
         self.params.child('cell id').sigValueChanged.connect(self._selection_changed)
         
     def selected_id(self):
+        """Return the currently selected cell ID.
+        """
         return self.params['cell id']
         
     def set_cell_ids(self, ids):
@@ -110,15 +112,127 @@ class CellSelector(QtCore.QObject):
     
     def _selection_changed(self):
         self._update_images()
-        self.cellSelectionChanged.emit(self.selected_id())
+        self.cell_selection_changed.emit(self.selected_id())
 
-
-class GaussianFilter(QtCore.QObject):
-    pass
 
 class SpikeDetector(QtCore.QObject):
-    pass
+    """Analyzer to generate spike metrics from a single calcium indicator trace.
     
+    The basic algorithm is:
+    
+    1. Lowpass input signal using gaussian filter
+    2. Exponential deconvolution to isolate spikes
+       (Richardson & Silberberg, J. Neurophysiol 2008)
+    3. Threshold detection of events
+
+
+    Signals
+    -------
+    parameters_changed(self):
+        Emitted whenever a parameter has changed that would affect the output
+        of the analyzer.
+        
+    """
+    parameters_changed = QtCore.Signal(object)  # self
+    
+    def __init__(self):
+        QtCore.QObject.__init__(self)
+        self.params = pt.Parameter(name='Spike detection', type='group', children=[
+            {'name': 'gaussian sigma', 'type': 'float', 'value': 2.0},
+            {'name': 'deconv const', 'type': 'float', 'value': 0.04, 'step': 0.01},
+            {'name': 'threshold', 'type': 'float', 'value': 0.05, 'step': 0.01},
+        ])
+        self.sig_plot = None
+        self.deconv_plot = None
+        
+        self.sig_trace = None
+        self.vticks = None
+        self.deconv_trace = None
+        self.threshold_line = None
+        
+        self.params.sigTreeStateChanged.connect(self._parameters_changed)
+        self.params.child('threshold').sigValueChanged.connect(self._threshold_param_changed)
+        
+    def set_plots(self, plt1=None, plt2=None):
+        """Connect this detector to two PlotWidgets where data should be displayed.
+        
+        The first plot will contain the lowpass-filtered trace and tick marks
+        for detected events. The second plot will contain the deconvolved signal
+        and a draggable threshold line.
+        """
+        self.sig_plot = plt1
+        if plt1 is not None:
+            if self.sig_trace is None:
+                self.sig_trace = pg.PlotDataItem()
+                self.vticks = pg.VTickGroup(yrange=[0.0, 0.05])
+            plt1.addItem(self.sig_trace)
+            plt1.addItem(self.vticks)
+        
+        self.deconv_plot = plt2
+        if plt2 is not None:
+            if self.deconv_trace is None:
+                self.deconv_trace = pg.PlotDataItem()
+                self.threshold_line = pg.InfiniteLine(angle=0, movable=True, pen='g')
+                self.threshold_line.setValue(self.params['threshold'])
+                self.threshold_line.sigPositionChanged.connect(self._threshold_line_moved)
+            plt2.addItem(self.deconv_trace)
+            plt2.addItem(self.threshold_line)
+        
+    def process(self, t, y, show=True):
+        """Return a table (numpy record array) of events detected in a time series.
+        
+        Parameters
+        ----------
+        t : ndarray
+            Time values corresponding to sample data.
+        y : ndarray
+            Signal values to process for events (for example, a single calcium
+            signal trace or a single electrode recording).
+        show : bool
+            If True, then processed data will be displayed in the connected
+            plots (see `set_plots()`).
+        
+        Returns
+        -------
+        events : numpy record array
+            The returned table has several fields:
+            
+            * index: the index in *data* at which an event began
+            * len: the length of the deconvolved event in samples
+            * sum: the integral of *data* under the deconvolved event curve
+            * peak: the peak value of the deconvolved event
+        """
+        filtered = ndi.gaussian_filter(y, self.params['gaussian sigma'])
+        
+        # Exponential deconvolution; see Richardson & Silberberg, J. Neurophysiol 2008
+        diff = np.diff(filtered) + self.params['deconv const'] * filtered[:-1]
+        
+        self.events = fn.zeroCrossingEvents(diff, minPeak=self.threshold_line.value())
+        self.events = self.events[self.events['sum'] > 0]
+        self.vticks.setXVals(t[self.events['index']])
+        self.vticks.update()
+
+        if show:
+            if self.sig_plot is not None:
+                self.sig_trace.setData(t[:len(filtered)], filtered)
+                self.vticks.setXVals(t[self.events['index']])
+                self.vticks.update()  # this should not be needed..
+            if self.deconv_plot is not None:
+                self.deconv_trace.setData(t[:len(diff)], diff)
+
+        return self.events
+        
+    def _parameters_changed(self):
+        self.parameters_changed.emit(self)
+    
+    def _threshold_line_moved(self):
+        # link line position to threshold parameter
+        self.params.child('threshold').setValue(self.threshold_line.value(), blockSignal=self._threshold_param_changed)
+        
+    def _threshold_param_changed(self):
+        # link line position to threshold parameter
+        if self.threshold_line is not None:
+            self.threshold_line.setValue(self.params['threshold'])
     
 
 class STAAnalyzer(QtGui.QWidget):
@@ -131,12 +245,16 @@ class STAAnalyzer(QtGui.QWidget):
         self.lsn_on = self.lsn_tmp.copy()
         self.lsn_on[self.lsn_on == 0] = 127
         
+        # setup cell selector
         cells = self.data_set.get_cell_specimen_ids()
         self.cell_selector = CellSelector()
         
         roi_img = (self.data_set.get_roi_mask_array() * np.array(cells)[:,None,None]).max(axis=0)
         max_img = self.data_set.get_max_projection()
         self.cell_selector.set_images(max_img, roi_img)
+
+        # setup spike detector
+        self.spike_detector = SpikeDetector()
         
         # make stimulus frame locations easier to look up
         self.lsn_id = None
@@ -150,8 +268,7 @@ class STAAnalyzer(QtGui.QWidget):
 
         self.params = pt.Parameter(name='params', type='group', children=[
             self.cell_selector.params,
-            {'name': 'gaussian sigma', 'type': 'float', 'value': 2.0},
-            {'name': 'deconv const', 'type': 'float', 'value': 0.04, 'step': 0.01},
+            self.spike_detector.params,
             {'name': 'on/off', 'type': 'list', 'values': ['any', 'on', 'off']},
             {'name': 'delay', 'type': 'float', 'value': -0.2, 'suffix': 's', 'siPrefix': True, 'step': 50e-3},
             {'name': 'delay range', 'type': 'float', 'value': 1.0, 'limits': [0,None], 'suffix': 's', 'siPrefix': True, 'step': 50e-3},
@@ -171,27 +288,15 @@ class STAAnalyzer(QtGui.QWidget):
         self.vs2.setOrientation(pg.QtCore.Qt.Vertical)
 
         self.plt1 = pg.PlotWidget()
-        self.trace = self.plt1.plot()
-        self.evTicks = pg.VTickGroup(yrange=[0.0, 0.06])
-        self.plt1.addItem(self.evTicks)
         self.plt2 = pg.PlotWidget()
-        self.ftrace = self.plt2.plot()
         self.plt2.setXLink(self.plt1)
+        self.spike_detector.set_plots(self.plt1, self.plt2)
 
         self.sta_imv = pg.ImageView()
 
         self.vs2.addWidget(self.plt1)
         self.vs2.addWidget(self.plt2)
         self.vs2.addWidget(self.sta_imv)
-
-        #fc = pg.flowchart.Flowchart(terminals={
-            #'dataIn': {'io': 'in'},
-            #'dataOut': {'io': 'out'}    
-        #})
-        #fc.setInput(dataIn=trace[1][0])
-        #w.addWidget(fc.widget())
-
-        self.tLine = self.plt2.addLine(y=0.05, movable=True, pen='g')
 
         self.hs.addWidget(self.vs1)
         self.hs.addWidget(self.vs2)
@@ -202,17 +307,14 @@ class STAAnalyzer(QtGui.QWidget):
         
         self.show()
         
-        self.cell_selector.cellSelectionChanged.connect(self.loadCell)
+        self.cell_selector.cell_selection_changed.connect(self.loadCell)
+        self.spike_detector.parameters_changed.connect(self.updateSpikes)
         self.params.sigTreeStateChanged.connect(self.paramsChanged)
-        self.tLine.sigPositionChanged.connect(self.updateSpikes)
-        #fc.sigStateChanged.connect(fcChanged)
         self.loadCell()
 
     def paramsChanged(self, root, changes):
         for param, change, val in changes:
-            if param in (self.params.child('gaussian sigma'), self.params.child('deconv const')):
-                self.updateSpikes()
-            elif param in (self.params.child('on/off'), self.params.child('delay'), self.params.child('delay range'), self.params.child('blur STA')):
+            if param in (self.params.child('on/off'), self.params.child('delay'), self.params.child('delay range'), self.params.child('blur STA')):
                 self.updateOutput()
 
     def loadCell(self):
@@ -233,22 +335,7 @@ class STAAnalyzer(QtGui.QWidget):
     def updateSpikes(self):
         cell_id = self.cell_selector.selected_id()
         self.data = self.data_set.get_dff_traces([cell_id])
-        #filtered = fc['dataOut'].value()
-        #if filtered is None:
-            #filtered = trace[1][0]
-        t = self.data[0]
-        filtered = ndi.gaussian_filter(self.data[1][0], self.params['gaussian sigma'])
-        self.trace.setData(t[:len(filtered)], filtered)
-        
-        # Exponential deconvolution; see Richardson & Silberberg, J. Neurophysiol 2008
-        diff = np.diff(filtered) + self.params['deconv const'] * filtered[:-1]
-        self.ftrace.setData(t[:len(diff)], diff)
-        
-        self.events = fn.zeroCrossingEvents(diff, minPeak=self.tLine.value())
-        self.events = self.events[self.events['sum'] > 0]
-        self.evTicks.setXVals(t[self.events['index']])
-        self.evTicks.update()
-
+        self.events = self.spike_detector.process(self.data[0], self.data[1][0])
         self.updateOutput()
         
     def updateOutput(self):
