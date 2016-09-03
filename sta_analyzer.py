@@ -1,4 +1,21 @@
+import numpy as np
+import pyqtgraph as pg
+from pyqtgraph.Qt import QtGui, QtCore
+import pyqtgraph.parametertree as pt
+from modules import CellSelector, SpikeDetector, TriggeredAverager
+
+
 class STAAnalyzer(QtGui.QWidget):
+    """Analyzer for running spike-triggered averaging on BOb calcium imaging data.
+    
+    Features:
+    
+    * Select cells from a list of pre-segmented ROIs
+    * Detect spikes using exponential deconvolution
+    * Plot calcium signal and deconvolved signal
+    * Display spike-triggered stimulus average with a delay window 
+    
+    """
     def __init__(self, boc, expt_id, cell_id):
         self.boc = boc
         self.data_set = boc.get_ophys_experiment_data(ophys_experiment_id=expt_id)
