@@ -1,9 +1,9 @@
-import os
+import os, sys
 import numpy as np
 import pyqtgraph as pg
 from allensdk.core.brain_observatory_cache import BrainObservatoryCache
 from allensdk.brain_observatory.locally_sparse_noise import LocallySparseNoise
-from sta_analyzer import STAAnalyzer
+from calcium_analysis.sta_analyzer import STAAnalyzer
 import user
 
 
@@ -25,3 +25,7 @@ cell_id = cells[0]
 pg.mkQApp()
 
 sd = STAAnalyzer(boc, expt_id, cell_id)
+
+
+if not sys.flags.interactive:
+    pg.QtGui.QApplication.exec_()
