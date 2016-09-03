@@ -235,15 +235,65 @@ class SpikeDetector(QtCore.QObject):
             self.threshold_line.setValue(self.params['threshold'])
     
 
+class TriggeredAverager(QtCore.QObject):
+    parameters_changed = QtCore.Signal(object)  # self
+
+    def __init__(self):
+        QtCore.QObject.__init__(self)
+        self.params = pt.Parameter(name='Triggered Average', type='group', children=[
+            {'name': 'on/off', 'type': 'list', 'values': ['any', 'on', 'off']},
+            {'name': 'delay', 'type': 'float', 'value': -0.2, 'suffix': 's', 'siPrefix': True, 'step': 50e-3},
+            {'name': 'delay range', 'type': 'float', 'value': 1.0, 'limits': [0,None], 'suffix': 's', 'siPrefix': True, 'step': 50e-3},
+            {'name': 'blur STA', 'type': 'float', 'value': 1.0, 'limits': [0,None], 'step': 0.5},
+        ])
+        self.imgview = None
+        self.params.sigTreeStateChanged.connect(self.parameters_changed)
+        
+    def set_imageview(self, imv):
+        self.imgview = imv
+        
+    def process(self, events, stimuli, stim_index, dt, show=True):
+        inds = events['index'] - int(self.params['delay'] / dt)
+
+        if self.params['on/off'] == 'on':
+            stimuli = np.clip(stimuli, 127, 255)
+        elif self.params['on/off'] == 'off':
+            stimuli = np.clip(stimuli, 0, 127)
+        
+        dr = self.params['delay range']
+        blur = self.params['blur STA']
+        nframes = int(dr / dt)
+        if nframes < 2:
+            frames = stim_index[inds]
+            mask = frames > 0
+            stimuli = stimuli[frames[mask]]
+            sta = (stimuli * events['sum'][mask][:,None,None]).mean(axis=0)
+            if blur > 0:
+                sta = ndi.gaussian_filter(sta, blur)
+        else:
+            offset = nframes // 2
+            sta = np.empty((nframes,) + stimuli.shape[1:], float)
+            for i in range(nframes):
+                shift_inds = inds - offset + i
+                mask = (shift_inds > 0) & (shift_inds < stim_index.shape[0])
+                frames = stim_index[shift_inds[mask]]
+                mask = frames > 0
+                sta[i] = (stimuli[frames[mask]] * events['sum'][mask][:,None,None]).mean(axis=0)
+            sta /= sta.mean(axis=1).mean(axis=1)[:,None,None]
+            if blur > 0:
+                sta = ndi.gaussian_filter(sta, (0, blur, blur))
+        
+        if self.imgview is not None:
+            self.imgview.setImage(sta.transpose(0, 2, 1), xvals=np.arange(-offset, -offset+nframes) * dt)
+            self.imgview.setCurrentIndex(sta.shape[0]/2)
+        return sta
+
+
 class STAAnalyzer(QtGui.QWidget):
     def __init__(self, boc, expt_id, cell_id):
         self.boc = boc
         self.data_set = boc.get_ophys_experiment_data(ophys_experiment_id=expt_id)
         self.lsn_tmp = self.data_set.get_stimulus_template('locally_sparse_noise')
-        self.lsn_off = self.lsn_tmp.copy()
-        self.lsn_off[self.lsn_off == 255] = 127
-        self.lsn_on = self.lsn_tmp.copy()
-        self.lsn_on[self.lsn_on == 0] = 127
         
         # setup cell selector
         cells = self.data_set.get_cell_specimen_ids()
@@ -252,9 +302,12 @@ class STAAnalyzer(QtGui.QWidget):
         roi_img = (self.data_set.get_roi_mask_array() * np.array(cells)[:,None,None]).max(axis=0)
         max_img = self.data_set.get_max_projection()
         self.cell_selector.set_images(max_img, roi_img)
-
+        
         # setup spike detector
         self.spike_detector = SpikeDetector()
+
+        # setup averager
+        self.averager = TriggeredAverager()
         
         # make stimulus frame locations easier to look up
         self.lsn_id = None
@@ -269,10 +322,7 @@ class STAAnalyzer(QtGui.QWidget):
         self.params = pt.Parameter(name='params', type='group', children=[
             self.cell_selector.params,
             self.spike_detector.params,
-            {'name': 'on/off', 'type': 'list', 'values': ['any', 'on', 'off']},
-            {'name': 'delay', 'type': 'float', 'value': -0.2, 'suffix': 's', 'siPrefix': True, 'step': 50e-3},
-            {'name': 'delay range', 'type': 'float', 'value': 1.0, 'limits': [0,None], 'suffix': 's', 'siPrefix': True, 'step': 50e-3},
-            {'name': 'blur STA', 'type': 'float', 'value': 1.0, 'limits': [0,None], 'step': 0.5},
+            self.averager.params,
         ])
 
         self.tree = pt.ParameterTree(showHeader=False)
@@ -293,6 +343,7 @@ class STAAnalyzer(QtGui.QWidget):
         self.spike_detector.set_plots(self.plt1, self.plt2)
 
         self.sta_imv = pg.ImageView()
+        self.averager.set_imageview(self.sta_imv)
 
         self.vs2.addWidget(self.plt1)
         self.vs2.addWidget(self.plt2)
@@ -305,17 +356,15 @@ class STAAnalyzer(QtGui.QWidget):
         self.setLayout(self.layout)
         self.layout.addWidget(self.hs)
         
+        self.resize(1400, 800)
+        self.hs.setSizes([600, 600])
         self.show()
         
         self.cell_selector.cell_selection_changed.connect(self.loadCell)
         self.spike_detector.parameters_changed.connect(self.updateSpikes)
-        self.params.sigTreeStateChanged.connect(self.paramsChanged)
-        self.loadCell()
+        self.averager.parameters_changed.connect(self.updateOutput)
 
-    def paramsChanged(self, root, changes):
-        for param, change, val in changes:
-            if param in (self.params.child('on/off'), self.params.child('delay'), self.params.child('delay range'), self.params.child('blur STA')):
-                self.updateOutput()
+        self.loadCell()
 
     def loadCell(self):
         cell_id = self.cell_selector.selected_id()
@@ -341,37 +390,4 @@ class STAAnalyzer(QtGui.QWidget):
     def updateOutput(self):
         t = self.data[0]
         dt = t[1] - t[0]
-        inds = self.events['index'] - int(self.params['delay'] / dt)
-
-        if self.params['on/off'] == 'on':
-            lsn_frames = self.lsn_on
-        elif self.params['on/off'] == 'off':
-            lsn_frames = self.lsn_off
-        else:
-            lsn_frames = self.lsn_tmp
-        
-        dr = self.params['delay range']
-        blur = self.params['blur STA']
-        nframes = int(dr / dt)
-        if nframes < 2:
-            frames = self.lsn_id[inds]
-            mask = frames > 0
-            lsn_frames = lsn_frames[frames[mask]]
-            sta = (lsn_frames * self.events['sum'][mask][:,None,None]).mean(axis=0)
-            if blur > 0:
-                sta = ndi.gaussian_filter(sta, blur)
-            self.sta_imv.setImage(sta.T)
-        else:
-            offset = nframes // 2
-            sta = np.empty((nframes,) + lsn_frames.shape[1:], float)
-            for i in range(nframes):
-                shift_inds = inds - offset + i
-                mask = (shift_inds > 0) & (shift_inds < self.lsn_id.shape[0])
-                frames = self.lsn_id[shift_inds[mask]]
-                mask = frames > 0
-                sta[i] = (lsn_frames[frames[mask]] * self.events['sum'][mask][:,None,None]).mean(axis=0)
-            sta /= sta.mean(axis=1).mean(axis=1)[:,None,None]
-            if blur > 0:
-                sta = ndi.gaussian_filter(sta, (0, blur, blur))
-            self.sta_imv.setImage(sta.transpose(0, 2, 1), xvals=np.arange(-offset, -offset+nframes) * dt)
-            self.sta_imv.setCurrentIndex(sta.shape[0]/2)
+        sta = self.averager.process(self.events, self.lsn_tmp, self.lsn_id, dt)

@@ -16,6 +16,7 @@ cont_info = boc.get_ophys_experiments(experiment_container_ids=[cont_id])
 
 # pick a data set with locally sparse noise stimulation
 expt_id = cont_info[0]['id']
+data_set = boc.get_ophys_experiment_data(ophys_experiment_id=expt_id)
 
 # pick a starting cell
 cells = data_set.get_cell_specimen_ids()
