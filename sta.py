@@ -3,7 +3,7 @@ import numpy as np
 import pyqtgraph as pg
 from allensdk.core.brain_observatory_cache import BrainObservatoryCache
 from allensdk.brain_observatory.locally_sparse_noise import LocallySparseNoise
-from tools import STAAnalyzer
+from sta_analyzer import STAAnalyzer
 import user
 
 

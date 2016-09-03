@@ -1,0 +1,102 @@
+class STAAnalyzer(QtGui.QWidget):
+    def __init__(self, boc, expt_id, cell_id):
+        self.boc = boc
+        self.data_set = boc.get_ophys_experiment_data(ophys_experiment_id=expt_id)
+        self.lsn_tmp = self.data_set.get_stimulus_template('locally_sparse_noise')
+        
+        # setup cell selector
+        cells = self.data_set.get_cell_specimen_ids()
+        self.cell_selector = CellSelector()
+        
+        roi_img = (self.data_set.get_roi_mask_array() * np.array(cells)[:,None,None]).max(axis=0)
+        max_img = self.data_set.get_max_projection()
+        self.cell_selector.set_images(max_img, roi_img)
+        
+        # setup spike detector
+        self.spike_detector = SpikeDetector()
+
+        # setup averager
+        self.averager = TriggeredAverager()
+        
+        # make stimulus frame locations easier to look up
+        self.lsn_id = None
+        
+        QtGui.QWidget.__init__(self)
+        self.hs = pg.QtGui.QSplitter()
+        self.hs.setOrientation(pg.QtCore.Qt.Horizontal)
+
+        self.vs1 = pg.QtGui.QSplitter()
+        self.vs1.setOrientation(pg.QtCore.Qt.Vertical)
+
+        self.params = pt.Parameter(name='params', type='group', children=[
+            self.cell_selector.params,
+            self.spike_detector.params,
+            self.averager.params,
+        ])
+
+        self.tree = pt.ParameterTree(showHeader=False)
+        self.tree.setParameters(self.params, showTop=False)
+        self.vs1.addWidget(self.tree)
+
+        self.expt_imv = pg.ImageView()
+        self.cell_selector.set_imageview(self.expt_imv)
+        
+        self.vs1.addWidget(self.expt_imv)
+
+        self.vs2 = pg.QtGui.QSplitter()
+        self.vs2.setOrientation(pg.QtCore.Qt.Vertical)
+
+        self.plt1 = pg.PlotWidget()
+        self.plt2 = pg.PlotWidget()
+        self.plt2.setXLink(self.plt1)
+        self.spike_detector.set_plots(self.plt1, self.plt2)
+
+        self.sta_imv = pg.ImageView()
+        self.averager.set_imageview(self.sta_imv)
+
+        self.vs2.addWidget(self.plt1)
+        self.vs2.addWidget(self.plt2)
+        self.vs2.addWidget(self.sta_imv)
+
+        self.hs.addWidget(self.vs1)
+        self.hs.addWidget(self.vs2)
+        
+        self.layout = QtGui.QGridLayout()
+        self.setLayout(self.layout)
+        self.layout.addWidget(self.hs)
+        
+        self.resize(1400, 800)
+        self.hs.setSizes([600, 600])
+        self.show()
+        
+        self.cell_selector.cell_selection_changed.connect(self.loadCell)
+        self.spike_detector.parameters_changed.connect(self.updateSpikes)
+        self.averager.parameters_changed.connect(self.updateOutput)
+
+        self.loadCell()
+
+    def loadCell(self):
+        cell_id = self.cell_selector.selected_id()
+        if cell_id is None:
+            return
+        
+        data = self.data_set.get_dff_traces([cell_id])
+        
+        if self.lsn_id is None:
+            lsn_st = self.data_set.get_stimulus_table('locally_sparse_noise')
+            self.lsn_id = np.zeros(len(data[0]), dtype='int') - 1
+            for i,frame in lsn_st.iterrows():
+                self.lsn_id[frame['start']:frame['end']] = frame['frame']
+        
+        self.updateSpikes()
+
+    def updateSpikes(self):
+        cell_id = self.cell_selector.selected_id()
+        self.data = self.data_set.get_dff_traces([cell_id])
+        self.events = self.spike_detector.process(self.data[0], self.data[1][0])
+        self.updateOutput()
+        
+    def updateOutput(self):
+        t = self.data[0]
+        dt = t[1] - t[0]
+        sta = self.averager.process(self.events, self.lsn_tmp, self.lsn_id, dt)
