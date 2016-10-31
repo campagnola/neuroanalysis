@@ -23,7 +23,7 @@ class MiesNwb(object):
         if self._notebook is None:
             # collect all lab notebook entries
             nb_entries = {}
-            nb_keys = self.nwb.hdf['general']['labnotebook']['ITC1600_Dev_0']['numericalKeys'][0]
+            nb_keys = self.hdf['general']['labnotebook']['ITC1600_Dev_0']['numericalKeys'][0]
             nb = self.hdf['general']['labnotebook']['ITC1600_Dev_0']['numericalValues']
             for i in range(nb.shape[0]):
                 rec = nb[i]

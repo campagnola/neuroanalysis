@@ -1,6 +1,8 @@
+import numpy as np
+from scipy.ndimage import gaussian_filter
 import pyqtgraph as pg
-from ephys_analysis.miesnwb import MiesNWB
-
+from pyqtgraph.Qt import QtGui, QtCore
+from neuroanalysis.miesnwb import MiesNwb
 
 
 class MiesNwbViewer(QtGui.QWidget):
