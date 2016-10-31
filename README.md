@@ -1,4 +1,4 @@
 Just a Module
 =============
 
-Interactive, modular tools for exploring calcium imaging data.
+Interactive, modular tools for analysis of neurophysiology data.
