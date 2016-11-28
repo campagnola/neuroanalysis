@@ -30,6 +30,7 @@ class MiesNwbExplorer(QtGui.QWidget):
         self.sweep_tree = QtGui.QTreeWidget()
         self.sweep_tree.setColumnCount(3)
         self.sweep_tree.setHeaderLabels(['Stim Name', 'Clamp Mode', 'Holding'])
+        self.sweep_tree.setSelectionMode(QtGui.QAbstractItemView.ExtendedSelection)
         self.layout.addWidget(self.sweep_tree, 1, 0)
 
         self.meta_tree = pg.DataTreeWidget()
@@ -59,6 +60,8 @@ class MiesNwbExplorer(QtGui.QWidget):
                 item = QtGui.QTreeWidgetItem([str(sweep.sweep_id)])
                 item.data = sweep
                 gitem.addChild(item)
+
+        self.sweep_tree.header().resizeSections(QtGui.QHeaderView.ResizeToContents)
 
     def selection(self):
         """Return a list of selected groups and/or sweeps. 
