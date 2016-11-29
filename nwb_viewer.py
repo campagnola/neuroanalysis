@@ -160,7 +160,8 @@ class SweepView(QtGui.QWidget):
         self.layout.addWidget(self.plots, 0, 0)
 
         self.params = pg.parametertree.Parameter(name='params', type='group', children=[
-            {'name': 'lowpass', 'type': 'float', 'value': 0, 'limits': [0, None], 'step': 0.1},
+            {'name': 'lowpass', 'type': 'float', 'value': 0, 'limits': [0, None], 'step': 1},
+            {'name': 'average', 'type': 'bool', 'value': False},
         ])
         self.params.sigTreeStateChanged.connect(self._update_plots)
 
@@ -178,24 +179,44 @@ class SweepView(QtGui.QWidget):
         dt = sweeps[0].traces()[0].meta()['Minimum Sampling interval']
         t = np.arange(data.shape[2]) * dt
 
+        # setup plot grid
         self.plots.clear()
         self.plots.set_shape(data.shape[1], 1)
         self.plots.setClipToView(True)
         self.plots.setDownsampling(True, True, 'peak')
+
+        # filter data
+        data = self.filter(data)
+
+        # plot all selected data
         for i in range(data.shape[0]):
+            alpha = 100 if self.params['average'] else 200
             for j in range(data.shape[1]):
                 plt = self.plots[j, 0]
-                # a = 255. * 0.8 / data.shape[0]
-                a = 200
-                plt.plot(t, self.filter(data[i, j]), pen=(255, 255, 255, a), antialias=True)
+                plt.plot(t, data[i, j], pen=(255, 255, 255, alpha), antialias=True)
 
+        # plot average
+        if self.params['average']:
+            for j in range(data.shape[1]):
+                plt = self.plots[j, 0]
+                plt.plot(t, data[:, j].mean(axis=0), pen=(0, 255, 0), shadowPen={'color': (0, 0, 0), 'width': 2}, antialias=True)
+
+        # set axis labels / units
+        for j in range(data.shape[1]):
+            sw = sweeps[0]
+            ch = sw.channels()[j]
+            tr = sw.traces()[ch]
+            units = 'A' if tr.meta()['Clamp Mode'] == 0 else 'V'
+            self.plots[j, 0].setLabels(left=("Channel %d" % tr.headstage_id, units))
+
+        # link x axes together
         for j in range(1, data.shape[1]):
             self.plots[j, 0].setXLink(self.plots[0, 0])
 
     def filter(self, data):
         lp = self.params['lowpass']
         if lp > 0:
-            data = gaussian_filter(data, lp)
+            data = gaussian_filter(data, (0, 0, lp))
         return data
 
 
@@ -210,16 +231,24 @@ class MultipatchMatrixView(QtGui.QWidget):
         self.layout.addWidget(self.plots, 0, 0)
 
         self.params = pg.parametertree.Parameter(name='params', type='group', children=[
-            {'name': 'lowpass', 'type': 'float', 'value': 0, 'limits': [0, None], 'step': 0.1},
+            {'name': 'lowpass', 'type': 'float', 'value': 15, 'limits': [0, None], 'step': 1},
+            {'name': 'pulses', 'type': 'int', 'value': 3, 'limits': [0, None]},
+            {'name': 'window', 'type': 'int', 'value': 1000, 'limits': [0, None]},
         ])
+        self.params.sigTreeStateChanged.connect(self._update_plots)
 
     def show_group(self, grp):
         self.show_sweeps(grp.sweeps)
 
     def show_sweeps(self, sweeps):
+        self.sweeps = sweeps
         if len(sweeps) == 0:
             self.plots.clear()
-            return
+        else:
+            self._update_plots()
+
+    def _update_plots(self):
+        sweeps = self.sweeps
         data = MiesNwb.pack_sweep_data(sweeps)
         data, stim = data[...,0], data[...,1]  # unpack stim and recordings
         dt = sweeps[0].traces()[0].meta()['Minimum Sampling interval']
@@ -244,23 +273,26 @@ class MultipatchMatrixView(QtGui.QWidget):
                     data[:,j,off:off+r] = data[:,j,off:off+1]
 
         data = data.mean(axis=0)
-        data = gaussian_filter(data, (0, 15))
+        data = gaussian_filter(data, (0, self.params['lowpass']))
+
+        window = self.params['window']
+        n_pulses = self.params['pulses']
 
         self.plots.set_shape(data.shape[0], data.shape[0])
         for i in range(data.shape[0]):
             for j in range(data.shape[0]):
                 plt = self.plots[i, j]
-                start = on_times[j][0][0] - 1000
-                stop = on_times[j][2][0] + 1000  # only look at the first 3 spikes
+                start = on_times[j][0][0] - window
+                stop = on_times[j][n_pulses-1][0] + window
 
                 seg = data[i, start:stop]
-                seg -= seg[:1000].mean()
+                seg -= seg[:window].mean()
 
                 if i == j:
                     color = (80, 80, 80)
                 else:
-                    qe = 30 * np.clip(seg, 0, 1e20).mean() / seg[:1000].std()
-                    qi = 30 * np.clip(-seg, 0, 1e20).mean() / seg[:1000].std()
+                    qe = 30 * np.clip(seg, 0, 1e20).mean() / seg[:window].std()
+                    qi = 30 * np.clip(-seg, 0, 1e20).mean() / seg[:window].std()
                     g = 100
                     r = np.clip(g + max(qi, 0), 0, 255)
                     b = np.clip(g + max(qe, 0), 0, 255)
