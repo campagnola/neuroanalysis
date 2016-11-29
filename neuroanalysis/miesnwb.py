@@ -116,7 +116,8 @@ class MiesNwb(object):
             self._groups = [SweepGroup(self, grp) for grp in groups]
         return self._groups
 
-    def pack_sweep_data(self, sweeps):
+    @staticmethod
+    def pack_sweep_data(sweeps):
         """Return a single array containing all data from a list of sweeps.
         
         The array shape is (sweeps, channels, samples, 2), where the final axis
