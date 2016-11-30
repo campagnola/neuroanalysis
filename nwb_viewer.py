@@ -232,8 +232,11 @@ class MultipatchMatrixView(QtGui.QWidget):
 
         self.params = pg.parametertree.Parameter(name='params', type='group', children=[
             {'name': 'lowpass', 'type': 'float', 'value': 15, 'limits': [0, None], 'step': 1},
-            {'name': 'pulses', 'type': 'int', 'value': 3, 'limits': [0, None]},
+            {'name': 'first pulse', 'type': 'int', 'value': 0, 'limits': [0, None]},
+            {'name': 'last pulse', 'type': 'int', 'value': 2, 'limits': [0, None]},
             {'name': 'window', 'type': 'int', 'value': 1000, 'limits': [0, None]},
+            {'name': 'show', 'type': 'list', 'values': ['sweep avg', 'sweep avg + sweeps', 'sweeps', 'pulse avg']},
+            {'name': 'remove artifacts', 'type': 'bool', 'value': True},
         ])
         self.params.sigTreeStateChanged.connect(self._update_plots)
 
@@ -257,56 +260,86 @@ class MultipatchMatrixView(QtGui.QWidget):
         stim = stim[0]
         diff = stim[:,1:] - stim[:,:-1]
         # note: the [1:] here skips the test pulse
-        on_times = [np.argwhere(diff[i] > 0)[1:] for i in range(diff.shape[0])]
-        off_times = [np.argwhere(diff[i] < 0)[1:] for i in range(diff.shape[0])]
+        on_times = [np.argwhere(diff[i] > 0)[1:,0] for i in range(diff.shape[0])]
+        off_times = [np.argwhere(diff[i] < 0)[1:,0] for i in range(diff.shape[0])]
 
         # remove capacitive artifacts
-        for i in range(stim.shape[0]):
-            for j in range(stim.shape[0]):
-                if i == j:
-                    continue
-                for k in range(len(on_times[i])):
-                    on = on_times[i][k][0]
-                    off = off_times[i][k][0]
-                    r = 10  # flatten 10 samples following each transient
-                    data[:,j,on:on+r] = data[:,j,on:on+1]
-                    data[:,j,off:off+r] = data[:,j,off:off+1]
+        if self.params['remove artifacts']:
+            for i in range(stim.shape[0]):
+                for j in range(stim.shape[0]):
+                    if i == j:
+                        continue
+                    for k in range(len(on_times[i])):
+                        on = on_times[i][k]
+                        off = off_times[i][k]
+                        r = 10  # flatten 10 samples following each transient
+                        data[:,j,on:on+r] = data[:,j,on:on+1]
+                        data[:,j,off:off+r] = data[:,j,off:off+1]
 
-        data = data.mean(axis=0)
-        data = gaussian_filter(data, (0, self.params['lowpass']))
+        data = gaussian_filter(data, (0, 0, self.params['lowpass']))
 
         window = self.params['window']
-        n_pulses = self.params['pulses']
+        n_sweeps = data.shape[0]
+        n_channels = data.shape[1]
+        self.plots.set_shape(n_channels, n_channels)
+        self.plots.clear()
 
-        self.plots.set_shape(data.shape[0], data.shape[0])
-        for i in range(data.shape[0]):
-            for j in range(data.shape[0]):
+        show_sweeps = 'sweeps' in self.params['show']
+        show_sweep_avg = 'sweep avg' in self.params['show']
+        show_pulse_avg = self.params['show'] == 'pulse avg'
+
+        for i in range(n_channels):
+            for j in range(n_channels):
                 plt = self.plots[i, j]
-                start = on_times[j][0][0] - window
-                stop = on_times[j][n_pulses-1][0] + window
+                start = on_times[j][self.params['first pulse']] - window
+                stop = on_times[j][self.params['last pulse']] + window
 
-                seg = data[i, start:stop]
-                seg -= seg[:window].mean()
+                # select the data segment to be displayed in this matrix cell
+                seg = data[:, i, start:stop]
+                # subtract off baseline for each sweep
+                seg -= seg[:, :window].mean()
 
-                if i == j:
-                    color = (80, 80, 80)
-                else:
-                    qe = 30 * np.clip(seg, 0, 1e20).mean() / seg[:window].std()
-                    qi = 30 * np.clip(-seg, 0, 1e20).mean() / seg[:window].std()
-                    g = 100
-                    r = np.clip(g + max(qi, 0), 0, 255)
-                    b = np.clip(g + max(qe, 0), 0, 255)
-                    color = (r, g, b)
 
-                plt.plot(np.arange(len(seg))*dt, seg, clear=True, pen={'color': color, 'width': 1}, antialias=True)
-                # plt.setAutoPan(y=True)
-                # plt.setMouseEnabled(y=False)
+                if show_sweeps:
+                    alpha = 100 if show_sweep_avg else 200
+                    color = (255, 255, 255, alpha)
+                    t = np.arange(seg.shape[1]) * dt
+                    for k in range(n_sweeps):
+                        plt.plot(t, seg[k], pen={'color': color, 'width': 1}, antialias=True)
+
+                if show_sweep_avg or show_pulse_avg:
+                    # average selected segments over all sweeps
+                    segm = seg.mean(axis=0)
+
+                    if show_pulse_avg:
+                        # average over all selected pulses
+                        pulses = []
+                        for k in range(self.params['first pulse'], self.params['last pulse'] + 1):
+                            pstart = on_times[j][k] - window - start
+                            pstop = pstart + (window * 2)
+                            pulses.append(segm[pstart:pstop])
+                        # for p in pulses:
+                        #     t = np.arange(p.shape[0]) * dt
+                        #     plt.plot(t, p)
+                        segm = np.vstack(pulses).mean(axis=0)
+
+                    t = np.arange(segm.shape[0]) * dt
+
+                    if i == j:
+                        color = (80, 80, 80)
+                    else:
+                        qe = 30 * np.clip(segm, 0, 1e20).mean() / segm[:window].std()
+                        qi = 30 * np.clip(-segm, 0, 1e20).mean() / segm[:window].std()
+                        g = 100
+                        r = np.clip(g + max(qi, 0), 0, 255)
+                        b = np.clip(g + max(qe, 0), 0, 255)
+                        color = (r, g, b)
+
+                    plt.plot(t, segm, pen={'color': color, 'width': 1}, antialias=True)
+
+
                 if i > 0 or j > 0:
                     plt.setXLink(self.plots[0, 0])
-                # if i == 0 and j > 1:
-                #     plt.setYLink(self.plots[i, 1])
-                # elif i > 0 and j > 0 and j != i:
-                #     plt.setYLink(self.plots[i, 0])
                 if j > 0:
                     plt.setYLink(self.plots[i, 0])
 
@@ -315,7 +348,7 @@ class MultipatchMatrixView(QtGui.QWidget):
                 if j > 0:
                     plt.getAxis('left').setVisible(False)
 
-                plt.setYRange(-14, 14)
+                plt.setYRange(-14e-12, 14e-12)
 
 
 class PlotGrid(QtGui.QWidget):
