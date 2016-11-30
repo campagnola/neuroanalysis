@@ -259,24 +259,36 @@ class Sweep(object):
             self._traces = OrderedDict([(ch, Trace(self, self.sweep_id, ch)) for ch in self.channels()])
         return self._traces
 
-    def meta(self):
+    def meta(self, all_chans=False):
         """Return a dict containing the metadata key/value pairs that are shared
         across all traces in this sweep.
-        """
-        if self._meta is None:
-            traces = [self.traces()[chan] for chan in self.channels()]
-            m = traces[0].meta().copy()
-            for tr in traces[1:]:
-                trm = tr.meta()
-                rem = []
-                for k in m:
-                    if k not in trm or trm[k] != m[k]:
-                        rem.append(k)
-            for k in rem:
-                m.pop(k)
 
-            self._meta = m
-        return self._meta
+        If *all_chans* is True, then instead return a list of values for each meta key.
+        """
+        if all_chans:
+            m = OrderedDict()
+            for trace in self.traces().values():
+                for k,v in trace.meta().items():
+                    if k not in m:
+                        m[k] = []
+                    m[k].append(v)
+            return m
+
+        else:
+            if self._meta is None:
+                traces = [self.traces()[chan] for chan in self.channels()]
+                m = traces[0].meta().copy()
+                for tr in traces[1:]:
+                    trm = tr.meta()
+                    rem = []
+                    for k in m:
+                        if k not in trm or trm[k] != m[k]:
+                            rem.append(k)
+                for k in rem:
+                    m.pop(k)
+
+                self._meta = m
+            return self._meta
         
     def data(self):
         """Return a single array containing recorded data and stimuli from all channels recorded

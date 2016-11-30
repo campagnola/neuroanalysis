@@ -48,8 +48,11 @@ class MiesNwbExplorer(QtGui.QWidget):
         for group in self._nwb.sweep_groups():
             meta = [group.sweeps[0].traces()[ch].meta() for ch in group.sweeps[0].channels()]
 
-            mode = ['V' if m.get('Clamp Mode', '') == 0 else 'I' for m in meta]
-            holding = [m.get('V-Clamp Holding Level', '') for m in meta]
+            mode = []
+            holding = []
+            for m in meta:
+                mode.append('V' if m.get('Clamp Mode', '') == 0 else 'I')
+                holding.append(m.get('%s-Clamp Holding Level'%mode[-1], ''))
             holding = ' '.join(['%0.1f'%h if h is not None else '__._' for h in holding])
             mode = ' '.join(mode)
 
@@ -77,7 +80,10 @@ class MiesNwbExplorer(QtGui.QWidget):
     def _selection_changed(self):
         sel = self.selection()
         if len(sel) == 1:
-            self.meta_tree.setData(sel[0].meta())
+            if isinstance(sel[0], SweepGroup):
+                self.meta_tree.setData(sel[0].meta())
+            else:
+                self.meta_tree.setData(sel[0].meta(all_chans=True))
         else:
             self.meta_tree.clear()
         self.selection_changed.emit(sel)
@@ -231,12 +237,13 @@ class MultipatchMatrixView(QtGui.QWidget):
         self.layout.addWidget(self.plots, 0, 0)
 
         self.params = pg.parametertree.Parameter(name='params', type='group', children=[
+            {'name': 'show', 'type': 'list', 'values': ['sweep avg', 'sweep avg + sweeps', 'sweeps', 'pulse avg']},
             {'name': 'lowpass', 'type': 'float', 'value': 15, 'limits': [0, None], 'step': 1},
             {'name': 'first pulse', 'type': 'int', 'value': 0, 'limits': [0, None]},
             {'name': 'last pulse', 'type': 'int', 'value': 2, 'limits': [0, None]},
             {'name': 'window', 'type': 'int', 'value': 1000, 'limits': [0, None]},
-            {'name': 'show', 'type': 'list', 'values': ['sweep avg', 'sweep avg + sweeps', 'sweeps', 'pulse avg']},
             {'name': 'remove artifacts', 'type': 'bool', 'value': True},
+            {'name': 'remove baseline', 'type': 'bool', 'value': True},
         ])
         self.params.sigTreeStateChanged.connect(self._update_plots)
 
@@ -255,6 +262,8 @@ class MultipatchMatrixView(QtGui.QWidget):
         data = MiesNwb.pack_sweep_data(sweeps)
         data, stim = data[...,0], data[...,1]  # unpack stim and recordings
         dt = sweeps[0].traces()[0].meta()['Minimum Sampling interval']
+
+        modes = [trace.meta()['Clamp Mode'] for trace in sweeps[0].traces().values()]
 
         # get pulse times for each channel
         stim = stim[0]
@@ -297,8 +306,8 @@ class MultipatchMatrixView(QtGui.QWidget):
                 # select the data segment to be displayed in this matrix cell
                 seg = data[:, i, start:stop]
                 # subtract off baseline for each sweep
-                seg -= seg[:, :window].mean()
-
+                if self.params['remove baseline']:
+                    seg -= seg[:, :window].mean()
 
                 if show_sweeps:
                     alpha = 100 if show_sweep_avg else 200
@@ -328,8 +337,11 @@ class MultipatchMatrixView(QtGui.QWidget):
                     if i == j:
                         color = (80, 80, 80)
                     else:
-                        qe = 30 * np.clip(segm, 0, 1e20).mean() / segm[:window].std()
-                        qi = 30 * np.clip(-segm, 0, 1e20).mean() / segm[:window].std()
+                        dif = segm - segm[:window].mean()
+                        qe = 30 * np.clip(dif, 0, 1e20).mean() / segm[:window].std()
+                        qi = 30 * np.clip(-dif, 0, 1e20).mean() / segm[:window].std()
+                        if modes[i] == 1:
+                            qi, qe = qe, qi  # invert color metric for current clamp 
                         g = 100
                         r = np.clip(g + max(qi, 0), 0, 255)
                         b = np.clip(g + max(qe, 0), 0, 255)
@@ -348,7 +360,8 @@ class MultipatchMatrixView(QtGui.QWidget):
                 if j > 0:
                     plt.getAxis('left').setVisible(False)
 
-                plt.setYRange(-14e-12, 14e-12)
+                r = 14e-12 if modes[i] == 0 else 5e-3
+                plt.setYRange(-r, r)
 
 
 class PlotGrid(QtGui.QWidget):
