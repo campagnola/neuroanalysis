@@ -124,10 +124,15 @@ class Recording(object):
         Strings should be described in the global ``device_tree``.        
         """
 
+    @property
     def channels(self):
-        """Return a list of channels included in this device sweep.
+        """A list of channels included in this device sweep.
         """
-        pass
+
+    @property
+    def start_time(self):
+        """The starting time (unix epoch) of this recording.
+        """
 
 
 class PatchClampRecording(Recording):
@@ -138,7 +143,59 @@ class PatchClampRecording(Recording):
     * May include stimulus waveform
     * Metadata about amplifier state (filtering, gain, bridge balance, compensation, etc)
     """
-    pass
+    @property
+    def clamp_mode(self):
+        """The mode of the patch clamp amplifier: 'vc', 'ic', or 'i0'.
+        """
+
+    @property
+    def membrane_potential(self):
+        """The holding potential if the recording is voltage-clamp, or the
+        resting membrane potential if the recording is current-clamp.
+        """
+
+    @property
+    def holding_current(self):
+        """The steady-state pipette current applied during this recording.
+        """
+
+    @property
+    def nearest_test_pulse(self):
+        """The test pulse that was acquired nearest to this recording.
+        """
+
+
+
+class PatchClampTestPulse(PatchClampRecording):    
+    @property
+    def access_resistance(self):
+        """The access resistance at the time of this recording.
+
+        This value may be calculated from a test pulse found within the recording,
+        or from data collected shortly before/after this recording, or it may
+        be None if the value is not known.
+        """
+        return None
+        
+    @property
+    def input_resistance(self):
+        """The input resistance of the cell at the time of this recording.
+
+        This value may be calculated from a test pulse found within the recording,
+        or from data collected shortly before/after this recording, or it may
+        be None if the value is not known.
+        """
+        return None
+    
+    @property
+    def capacitance(self):
+        """The capacitance of the cell at the time of this recording.
+
+        This value may be calculated from a test pulse found within the recording,
+        or from data collected shortly before/after this recording, or it may
+        be None if the value is not known.
+        """
+        return None
 
 
 class DAQRecording(Recording):
