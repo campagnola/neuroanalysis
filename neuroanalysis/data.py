@@ -16,14 +16,49 @@ This abstraction layer also helps to enforce good coding practice by separating 
 analysis, and visualization.
 """
 
+class Experiment(object):
+    """A generic container for RecordingSequence and SyncRecording instances that
+    were acquired together.
+    
+    The boundaries between one experiment and the next are sometimes ambiguous, but
+    in general we group multiple recordings into an experiment if they are likely to
+    be analyzed together. Likewise, recordings that have no causal relationship
+    to each other probably belong in different Experiment containers. For example,
+    a series of recordings made on the same cell almost certainly belong in the same
+    Experiment, whereas recordings made from different pieces of tissue probably
+    belong in different Experiments.
+    """
+    @property
+    def recordings(self):
+        """A list of SyncRecording instances in this Experiment sorted by starting time.
+        """
+        
+    @property
+    def sequences(self):
+        """A list of RecordingSequence instances in this Experiment sorted by starting gime.
+        """
+
 
 class RecordingSequence(object):
+    
+    #  Acquisition?
+    #  RecordingSet?
+    
+    #  Do we need both SyncRecordingSequence and RecordingSequence ?
+    #  Can multiple RecordingSequence instances refer to the same underlying sequence?
+    #    - Let's say no--otherwise we have to worry about unique identification, comparison, etc.
+    #    - Add ___View classes that slice/dice any way we like.
+    
     """Representation of a sequence of data acquisitions.
 
     For example, this could be a single type of acquisition that was repeated ten times,
     or a series of ten acquisitions that varies one parameter across ten values.
+    Usually the recordings in a sequence all use the same set of devices.
 
     Sequences may be multi-dimensional and may vary more than one parameter.
+    
+    Items in a sequence are usually SyncRecording instances, but may also be
+    nested RecordingSequence instances.
     """
     @property
     def type(self):
@@ -42,6 +77,11 @@ class RecordingSequence(object):
 
     def __getitem__(self, item):
         """Return one item (a SyncRecording instance) from the sequence.
+        """
+
+    def get_device(self, device):
+        """Return a RecordingSequence with only a single device selected from
+        each recording.
         """
 
     def sequence_params(self):
@@ -84,9 +124,18 @@ class SyncRecording(object):
 
     @property
     def devices(self):
-        """A list of the recordings in this sweep.
+        """A list of the names of devices in this recording.
         """
         pass
+
+    def __getitem__(self):
+        """Return a recording given its device name.
+        """
+
+    @property
+    def recordings(self):
+        """A list of the recordings in this recording.
+        """
 
     @property
     def meta(self):
