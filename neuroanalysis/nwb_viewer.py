@@ -10,7 +10,7 @@ class MiesNwbExplorer(QtGui.QWidget):
     """
     selection_changed = QtCore.Signal(object)
 
-    def __init__(self, nwb):
+    def __init__(self, nwb=None):
         QtGui.QWidget.__init__(self)
 
         self._nwb = None
@@ -36,15 +36,20 @@ class MiesNwbExplorer(QtGui.QWidget):
         self.meta_tree = pg.DataTreeWidget()
         self.layout.addWidget(self.meta_tree, 2, 0)
 
-        self.setNwb(nwb)
+        self.set_nwb(nwb)
 
         self.sweep_tree.itemSelectionChanged.connect(self._selection_changed)
 
-    def setNwb(self, nwb):
+    def set_nwb(self, nwb):
         self._nwb = nwb
         self.update_sweep_tree()
 
     def update_sweep_tree(self):
+        self.sweep_tree.clear()
+
+        if self._nwb is None:
+            return
+
         for group in self._nwb.sweep_groups():
             meta = [group.sweeps[0].traces()[ch].meta() for ch in group.sweeps[0].channels()]
 
@@ -90,9 +95,9 @@ class MiesNwbExplorer(QtGui.QWidget):
 
 
 class MiesNwbViewer(QtGui.QWidget):
-    def __init__(self, nwb):
+    def __init__(self, nwb=None):
         QtGui.QWidget.__init__(self)
-        self.nwb = nwb 
+        self.nwb = nwb
         
         self.layout = QtGui.QGridLayout()
         self.layout.setContentsMargins(0, 0, 0, 0)
@@ -129,6 +134,10 @@ class MiesNwbViewer(QtGui.QWidget):
 
         self.tab_changed()
         self.tabs.currentChanged.connect(self.tab_changed)
+
+    def set_nwb(self, nwb):
+        self.nwb = nwb
+        self.explorer.set_nwb(nwb)
 
     def data_selection_changed(self, selection):
         sweeps = self.selected_sweeps(selection)
@@ -182,7 +191,7 @@ class SweepView(QtGui.QWidget):
         sweeps = self.sweeps
         data = MiesNwb.pack_sweep_data(sweeps)
         data, stim = data[...,0], data[...,1]  # unpack stim and recordings
-        dt = sweeps[0].traces()[0].meta()['Minimum Sampling interval']
+        dt = sweeps[0].traces().values()[0].meta()['Minimum Sampling interval']
         t = np.arange(data.shape[2]) * dt
 
         # setup plot grid
@@ -238,12 +247,17 @@ class MultipatchMatrixView(QtGui.QWidget):
 
         self.params = pg.parametertree.Parameter(name='params', type='group', children=[
             {'name': 'show', 'type': 'list', 'values': ['sweep avg', 'sweep avg + sweeps', 'sweeps', 'pulse avg']},
-            {'name': 'lowpass', 'type': 'float', 'value': 15, 'limits': [0, None], 'step': 1},
+            {'name': 'lowpass', 'type': 'bool', 'value': True, 'children': [
+                {'name': 'sigma', 'type': 'float', 'value': 5e-4, 'step': 1e-5, 'limits': [0, None], 'suffix': 's', 'siPrefix': True},
+            ]},
             {'name': 'first pulse', 'type': 'int', 'value': 0, 'limits': [0, None]},
             {'name': 'last pulse', 'type': 'int', 'value': 2, 'limits': [0, None]},
-            {'name': 'window', 'type': 'int', 'value': 1000, 'limits': [0, None]},
-            {'name': 'remove artifacts', 'type': 'bool', 'value': True},
+            {'name': 'window', 'type': 'float', 'value': 10e-3, 'step': 1e-3, 'limits': [0, None], 'suffix': 's', 'siPrefix': True},
+            {'name': 'remove artifacts', 'type': 'bool', 'value': True, 'children': [
+                {'name': 'window', 'type': 'float', 'suffix': 's', 'siPrefix': True, 'value': 1e-3, 'step': 1e-4, 'bounds': [0, None]},
+            ]},
             {'name': 'remove baseline', 'type': 'bool', 'value': True},
+            {'name': 'show ticks', 'type': 'bool', 'value': True},
         ])
         self.params.sigTreeStateChanged.connect(self._update_plots)
 
@@ -261,7 +275,7 @@ class MultipatchMatrixView(QtGui.QWidget):
         sweeps = self.sweeps
         data = MiesNwb.pack_sweep_data(sweeps)
         data, stim = data[...,0], data[...,1]  # unpack stim and recordings
-        dt = sweeps[0].traces()[0].meta()['Minimum Sampling interval']
+        dt = sweeps[0].traces().values()[0].meta()['Minimum Sampling interval'] / 1000.
 
         modes = [trace.meta()['Clamp Mode'] for trace in sweeps[0].traces().values()]
 
@@ -274,6 +288,7 @@ class MultipatchMatrixView(QtGui.QWidget):
 
         # remove capacitive artifacts
         if self.params['remove artifacts']:
+            npts = int(self.params['remove artifacts', 'window'] / dt)
             for i in range(stim.shape[0]):
                 for j in range(stim.shape[0]):
                     if i == j:
@@ -281,13 +296,15 @@ class MultipatchMatrixView(QtGui.QWidget):
                     for k in range(len(on_times[i])):
                         on = on_times[i][k]
                         off = off_times[i][k]
-                        r = 10  # flatten 10 samples following each transient
-                        data[:,j,on:on+r] = data[:,j,on:on+1]
-                        data[:,j,off:off+r] = data[:,j,off:off+1]
+                        data[:, j, on:on+npts] = data[:, j, max(0,on-npts):on].mean()
+                        data[:, j, off:off+npts] = data[:, j, max(0,off-npts):off].mean()
 
-        data = gaussian_filter(data, (0, 0, self.params['lowpass']))
+        # lowpass filter
+        if self.params['lowpass']:
+            data = gaussian_filter(data, (0, 0, self.params['lowpass', 'sigma'] / dt))
 
-        window = self.params['window']
+        # prepare to plot
+        window = int(self.params['window'] / dt)
         n_sweeps = data.shape[0]
         n_channels = data.shape[1]
         self.plots.set_shape(n_channels, n_channels)
@@ -301,10 +318,22 @@ class MultipatchMatrixView(QtGui.QWidget):
             for j in range(n_channels):
                 plt = self.plots[i, j]
                 start = on_times[j][self.params['first pulse']] - window
+                if start < 0:
+                    frontpad = -start
+                    start = 0
+                else:
+                    frontpad = 0
                 stop = on_times[j][self.params['last pulse']] + window
 
                 # select the data segment to be displayed in this matrix cell
-                seg = data[:, i, start:stop]
+                # add padding if necessary
+                if frontpad == 0:
+                    seg = data[:, i, start:stop].copy()
+                else:
+                    seg = np.empty((data.shape[0], stop + frontpad), data.dtype)
+                    seg[:, frontpad:] = data[:, i, start:stop]
+                    seg[:, :frontpad] = seg[:, frontpad:frontpad+1]
+
                 # subtract off baseline for each sweep
                 if self.params['remove baseline']:
                     seg -= seg[:, :window].mean()
@@ -324,7 +353,7 @@ class MultipatchMatrixView(QtGui.QWidget):
                         # average over all selected pulses
                         pulses = []
                         for k in range(self.params['first pulse'], self.params['last pulse'] + 1):
-                            pstart = on_times[j][k] - window - start
+                            pstart = on_times[j][k] - on_times[j][self.params['first pulse']]
                             pstop = pstart + (window * 2)
                             pulses.append(segm[pstart:pstop])
                         # for p in pulses:
@@ -349,6 +378,9 @@ class MultipatchMatrixView(QtGui.QWidget):
 
                     plt.plot(t, segm, pen={'color': color, 'width': 1}, antialias=True)
 
+                if self.params['show ticks']:
+                    vt = pg.VTickGroup((on_times[j]-start) * dt, [0, 0.15], pen=0.4)
+                    plt.addItem(vt)
 
                 if i > 0 or j > 0:
                     plt.setXLink(self.plots[0, 0])
@@ -360,6 +392,10 @@ class MultipatchMatrixView(QtGui.QWidget):
                 if j > 0:
                     plt.getAxis('left').setVisible(False)
 
+                if i == data.shape[0] - 1:
+                    plt.setLabels(bottom=('Time', 's'))
+                if j == 0:
+                    plt.setLabels(left=('CH%d'%sweeps[0].traces().values()[i].headstage_id, 'A' if modes[i] == 0 else 'V'))
                 r = 14e-12 if modes[i] == 0 else 5e-3
                 plt.setYRange(-r, r)
 
@@ -403,9 +439,10 @@ class PlotGrid(QtGui.QWidget):
     def remove_plots(self):
         for i in range(self.rows):
             for j in range(self.cols):
-                self[i, j].hide()
-                self[i, j].close()
-                self[i, j].setScene(None)
+                p = self[i, j]
+                p.hide()
+                p.close()
+                p.scene().removeItem(p)
         self.plots = []
 
     def _call_on_plots(self, m, *args, **kwds):
