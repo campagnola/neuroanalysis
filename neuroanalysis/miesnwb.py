@@ -1,4 +1,5 @@
 import sys
+from datetime import datetime
 from collections import OrderedDict
 import numpy as np
 import h5py
@@ -69,6 +70,9 @@ class MiesNwb(object):
                 # last column applies to all channels
                 mask = ~np.isnan(entry[:,8])
                 entry[mask] = entry[:,8:9][mask]
+    
+                # first 4 fields of first column apply to all channels
+                entry[:4] = entry[:4, 0:1]
 
                 # convert to list-o-dicts
                 meta = []
@@ -149,6 +153,14 @@ class MiesNwb(object):
         for i in range(len(sweeps)):
             data[i] = sweeps[i]
         return data
+
+    @staticmethod
+    def igorpro_date(timestamp):
+        """Convert an IgorPro timestamp (seconds since 1904-01-01) to a datetime
+        object.
+        """
+        dt = datetime(1970,1,1) - datetime(1904,1,1)
+        return datetime.fromtimestamp(timestamp) - dt
 
 
 class Trace(object):
@@ -310,6 +322,9 @@ class Sweep(object):
         """Return a string description of this sweep.
         """
         return "\n".join(map(repr, self.traces().values()))
+
+    def start_time(self):
+        return MiesNwb.igorpro_date(self.meta()['TimeStamp'])
 
 
 class SweepGroup(object):

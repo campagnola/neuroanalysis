@@ -296,8 +296,8 @@ class MultipatchMatrixView(QtGui.QWidget):
                     for k in range(len(on_times[i])):
                         on = on_times[i][k]
                         off = off_times[i][k]
-                        data[:, j, on:on+npts] = data[:, j, max(0,on-npts):on].mean()
-                        data[:, j, off:off+npts] = data[:, j, max(0,off-npts):off].mean()
+                        data[:, j, on:on+npts] = data[:, j, max(0,on-npts):on].mean(axis=1)[:,None]
+                        data[:, j, off:off+npts] = data[:, j, max(0,off-npts):off].mean(axis=1)[:,None]
 
         # lowpass filter
         if self.params['lowpass']:
@@ -336,7 +336,7 @@ class MultipatchMatrixView(QtGui.QWidget):
 
                 # subtract off baseline for each sweep
                 if self.params['remove baseline']:
-                    seg -= seg[:, :window].mean()
+                    seg -= seg[:, :window].mean(axis=1)[:,None]
 
                 if show_sweeps:
                     alpha = 100 if show_sweep_avg else 200
