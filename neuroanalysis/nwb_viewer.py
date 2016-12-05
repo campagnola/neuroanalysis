@@ -278,7 +278,8 @@ class MultipatchMatrixView(QtGui.QWidget):
         dt = sweeps[0].traces().values()[0].meta()['Minimum Sampling interval'] / 1000.
 
         modes = [trace.meta()['Clamp Mode'] for trace in sweeps[0].traces().values()]
-
+        headstages = [trace.headstage_id for trace in sweeps[0].traces().values()]
+        
         # get pulse times for each channel
         stim = stim[0]
         diff = stim[:,1:] - stim[:,:-1]
@@ -286,13 +287,20 @@ class MultipatchMatrixView(QtGui.QWidget):
         on_times = [np.argwhere(diff[i] > 0)[1:,0] for i in range(diff.shape[0])]
         off_times = [np.argwhere(diff[i] < 0)[1:,0] for i in range(diff.shape[0])]
 
-        # remove capacitive artifacts
+        # remove capacitive artifacts from adjacent electrodes
         if self.params['remove artifacts']:
             npts = int(self.params['remove artifacts', 'window'] / dt)
             for i in range(stim.shape[0]):
                 for j in range(stim.shape[0]):
                     if i == j:
                         continue
+                    
+                    # are these headstages adjacent?
+                    hs1, hs2 = headstages[i], headstages[j]
+                    if abs(hs2-hs1) > 3:
+                        continue
+                    
+                    # remove artifacts
                     for k in range(len(on_times[i])):
                         on = on_times[i][k]
                         off = off_times[i][k]
@@ -387,13 +395,13 @@ class MultipatchMatrixView(QtGui.QWidget):
                 if j > 0:
                     plt.setYLink(self.plots[i, 0])
 
-                if i < data.shape[0] - 1:
+                if i < n_channels - 1:
                     plt.getAxis('bottom').setVisible(False)
                 if j > 0:
                     plt.getAxis('left').setVisible(False)
 
-                if i == data.shape[0] - 1:
-                    plt.setLabels(bottom=('Time', 's'))
+                if i == n_channels - 1:
+                    plt.setLabels(bottom=('CH%d'%sweeps[0].traces().values()[j].headstage_id, 's'))
                 if j == 0:
                     plt.setLabels(left=('CH%d'%sweeps[0].traces().values()[i].headstage_id, 'A' if modes[i] == 0 else 'V'))
                 r = 14e-12 if modes[i] == 0 else 5e-3

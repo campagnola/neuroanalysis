@@ -160,7 +160,7 @@ class MiesNwb(object):
         object.
         """
         dt = datetime(1970,1,1) - datetime(1904,1,1)
-        return datetime.fromtimestamp(timestamp) - dt
+        return datetime.utcfromtimestamp(timestamp) - dt
 
 
 class Trace(object):
