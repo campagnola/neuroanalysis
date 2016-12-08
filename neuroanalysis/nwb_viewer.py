@@ -248,11 +248,11 @@ class MultipatchMatrixView(QtGui.QWidget):
         self.params = pg.parametertree.Parameter(name='params', type='group', children=[
             {'name': 'show', 'type': 'list', 'values': ['sweep avg', 'sweep avg + sweeps', 'sweeps', 'pulse avg']},
             {'name': 'lowpass', 'type': 'bool', 'value': True, 'children': [
-                {'name': 'sigma', 'type': 'float', 'value': 5e-4, 'step': 1e-5, 'limits': [0, None], 'suffix': 's', 'siPrefix': True},
+                {'name': 'sigma', 'type': 'float', 'value': 200e-6, 'step': 1e-5, 'limits': [0, None], 'suffix': 's', 'siPrefix': True},
             ]},
             {'name': 'first pulse', 'type': 'int', 'value': 0, 'limits': [0, None]},
-            {'name': 'last pulse', 'type': 'int', 'value': 2, 'limits': [0, None]},
-            {'name': 'window', 'type': 'float', 'value': 10e-3, 'step': 1e-3, 'limits': [0, None], 'suffix': 's', 'siPrefix': True},
+            {'name': 'last pulse', 'type': 'int', 'value': 7, 'limits': [0, None]},
+            {'name': 'window', 'type': 'float', 'value': 30e-3, 'step': 1e-3, 'limits': [0, None], 'suffix': 's', 'siPrefix': True},
             {'name': 'remove artifacts', 'type': 'bool', 'value': True, 'children': [
                 {'name': 'window', 'type': 'float', 'suffix': 's', 'siPrefix': True, 'value': 1e-3, 'step': 1e-4, 'bounds': [0, None]},
             ]},
@@ -269,9 +269,9 @@ class MultipatchMatrixView(QtGui.QWidget):
         if len(sweeps) == 0:
             self.plots.clear()
         else:
-            self._update_plots()
+            self._update_plots(autoRange=True)
 
-    def _update_plots(self):
+    def _update_plots(self, autoRange=False):
         sweeps = self.sweeps
         data = MiesNwb.pack_sweep_data(sweeps)
         data, stim = data[...,0], data[...,1]  # unpack stim and recordings
@@ -317,6 +317,8 @@ class MultipatchMatrixView(QtGui.QWidget):
         n_channels = data.shape[1]
         self.plots.set_shape(n_channels, n_channels)
         self.plots.clear()
+        self.plots.setClipToView(True)
+        self.plots.setDownsampling(True, True, 'peak')
 
         show_sweeps = 'sweeps' in self.params['show']
         show_sweep_avg = 'sweep avg' in self.params['show']
@@ -405,7 +407,10 @@ class MultipatchMatrixView(QtGui.QWidget):
                 if j == 0:
                     plt.setLabels(left=('CH%d'%sweeps[0].traces().values()[i].headstage_id, 'A' if modes[i] == 0 else 'V'))
                 r = 14e-12 if modes[i] == 0 else 5e-3
-                plt.setYRange(-r, r)
+
+                if autoRange:
+                    plt.setYRange(-r, r)
+                    plt.setXRange(t[0], t[-1])
 
 
 class PlotGrid(QtGui.QWidget):
