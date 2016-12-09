@@ -197,6 +197,12 @@ class Trace(object):
         """Return the raw recorded data for this trace.
         """
         return self.hdf_group['data']        
+
+    @property
+    def sample_rate(self):
+        # Note: this is also available in meta()['Minimum Sampling interval'],
+        # but that key is missing in some older NWB files.
+        return self.recording().attrs['IGORWaveScaling'][1,0] 
         
     def da_chan(self):
         """Return the DA channel ID for this trace.

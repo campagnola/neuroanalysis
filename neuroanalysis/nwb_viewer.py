@@ -191,7 +191,7 @@ class SweepView(QtGui.QWidget):
         sweeps = self.sweeps
         data = MiesNwb.pack_sweep_data(sweeps)
         data, stim = data[...,0], data[...,1]  # unpack stim and recordings
-        dt = sweeps[0].traces().values()[0].meta()['Minimum Sampling interval']
+        dt = sweeps[0].traces().values()[0].sample_rate
         t = np.arange(data.shape[2]) * dt
 
         # setup plot grid
@@ -275,7 +275,7 @@ class MultipatchMatrixView(QtGui.QWidget):
         sweeps = self.sweeps
         data = MiesNwb.pack_sweep_data(sweeps)
         data, stim = data[...,0], data[...,1]  # unpack stim and recordings
-        dt = sweeps[0].traces().values()[0].meta()['Minimum Sampling interval'] / 1000.
+        dt = sweeps[0].traces().values()[0].sample_rate / 1000.
 
         modes = [trace.meta()['Clamp Mode'] for trace in sweeps[0].traces().values()]
         headstages = [trace.headstage_id for trace in sweeps[0].traces().values()]
