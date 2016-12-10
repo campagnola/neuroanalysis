@@ -259,7 +259,7 @@ class MultipatchMatrixView(QtGui.QWidget):
             {'name': 'remove baseline', 'type': 'bool', 'value': True},
             {'name': 'show ticks', 'type': 'bool', 'value': True},
         ])
-        self.params.sigTreeStateChanged.connect(self._update_plots)
+        self.params.sigTreeStateChanged.connect(self._params_changed)
 
     def show_group(self, grp):
         self.show_sweeps(grp.sweeps)
@@ -270,6 +270,9 @@ class MultipatchMatrixView(QtGui.QWidget):
             self.plots.clear()
         else:
             self._update_plots(autoRange=True)
+
+    def _params_changed(self, *args):
+        self._update_plots()
 
     def _update_plots(self, autoRange=False):
         sweeps = self.sweeps
@@ -319,6 +322,7 @@ class MultipatchMatrixView(QtGui.QWidget):
         self.plots.clear()
         self.plots.setClipToView(True)
         self.plots.setDownsampling(True, True, 'peak')
+        self.plots.enableAutoRange(False, False)
 
         show_sweeps = 'sweeps' in self.params['show']
         show_sweep_avg = 'sweep avg' in self.params['show']
@@ -392,10 +396,15 @@ class MultipatchMatrixView(QtGui.QWidget):
                     vt = pg.VTickGroup((on_times[j]-start) * dt, [0, 0.15], pen=0.4)
                     plt.addItem(vt)
 
-                if i > 0 or j > 0:
-                    plt.setXLink(self.plots[0, 0])
-                if j > 0:
-                    plt.setYLink(self.plots[i, 0])
+                # Link all plots along x axis
+                plt.setXLink(self.plots[0, 0])
+
+                if i == j:
+                    # link y axes of all diagonal plots
+                    plt.setYLink(self.plots[0, 0])
+                else:
+                    # link y axes of all plots within a row
+                    plt.setYLink(self.plots[i, (i+1) % 2])  # (i+1)%2 just avoids linking to 0,0
 
                 if i < n_channels - 1:
                     plt.getAxis('bottom').setVisible(False)
@@ -406,11 +415,14 @@ class MultipatchMatrixView(QtGui.QWidget):
                     plt.setLabels(bottom=('CH%d'%sweeps[0].traces().values()[j].headstage_id, 's'))
                 if j == 0:
                     plt.setLabels(left=('CH%d'%sweeps[0].traces().values()[i].headstage_id, 'A' if modes[i] == 0 else 'V'))
-                r = 14e-12 if modes[i] == 0 else 5e-3
 
-                if autoRange:
-                    plt.setYRange(-r, r)
-                    plt.setXRange(t[0], t[-1])
+        if autoRange:
+            r = 14e-12 if modes[i] == 0 else 5e-3
+            self.plots[0, 1].setYRange(-r, r)
+            r = 2e-9 if modes[i] == 0 else 100e-3
+            self.plots[0, 0].setYRange(-r, r)
+
+            self.plots[0, 0].setXRange(t[0], t[-1])
 
 
 class PlotGrid(QtGui.QWidget):
@@ -472,6 +484,9 @@ class PlotGrid(QtGui.QWidget):
 
     def setDownsampling(self, *args, **kwds):
         self._call_on_plots('setDownsampling', *args, **kwds)
+
+    def enableAutoRange(self, *args, **kwds):
+        self._call_on_plots('enableAutoRange', *args, **kwds)
 
 
 
