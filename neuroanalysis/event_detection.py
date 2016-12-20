@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def zeroCrossingEvents(data, minLength=3, minPeak=0.0, minSum=0.0, noiseThreshold=None):
+def zero_crossing_events(data, min_length=3, min_peak=0.0, min_sum=0.0, noise_threshold=None):
     """Locate events of any shape in a signal. Works by finding regions of the signal
     that deviate from noise, using the area beneath the deviation as the detection criteria.
     
@@ -9,7 +9,7 @@ def zeroCrossingEvents(data, minLength=3, minPeak=0.0, minSum=0.0, noiseThreshol
       - noise is gaussian
       - baseline is centered at 0 (high-pass filtering may be required to achieve this).
       - no 0 crossings within an event due to noise (low-pass filtering may be required to achieve this)
-      - Events last more than minLength samples
+      - Events last more than min_length samples
       Return an array of events where each row is (start, length, sum, peak)
     """
     ## just make sure this is an ndarray and not a MetaArray before operating..
@@ -35,9 +35,9 @@ def zeroCrossingEvents(data, minLength=3, minPeak=0.0, minSum=0.0, noiseThreshol
     times[1:-1] = times1                                 ## rather than ignore them.
     #p.mark('find crossings')
     
-    ## select only events longer than minLength.
+    ## select only events longer than min_length.
     ## We do this check early for performance--it eliminates the vast majority of events
-    longEvents = np.argwhere(times[1:] - times[:-1] > minLength)
+    longEvents = np.argwhere(times[1:] - times[:-1] > min_length)
     if len(longEvents) < 1:
         nEvents = 0
     else:
@@ -68,7 +68,7 @@ def zeroCrossingEvents(data, minLength=3, minPeak=0.0, minSum=0.0, noiseThreshol
     if xvals is not None:
         events['time'] = xvals[events['index']]
     
-    if noiseThreshold  > 0:
+    if noise_threshold > 0:
         ## Fit gaussian to peak in size histogram, use fit sigma as criteria for noise rejection
         stdev = measureNoise(data1)
         #p.mark('measureNoise')
@@ -79,7 +79,7 @@ def zeroCrossingEvents(data, minLength=3, minPeak=0.0, minSum=0.0, noiseThreshol
         fit = fitGaussian(histx, hist[0], [hist[0].max(), 0, stdev*3, 0])
         #p.mark('fit')
         sigma = fit[0][2]
-        minSize = sigma * noiseThreshold
+        minSize = sigma * noise_threshold
         
         ## Generate new set of events, ignoring those with sum < minSize
         #mask = abs(events['sum'] / events['len']) >= minSize
@@ -88,11 +88,11 @@ def zeroCrossingEvents(data, minLength=3, minPeak=0.0, minSum=0.0, noiseThreshol
         events = events[mask]
         #p.mark('select')
 
-    if minPeak > 0:
-        events = events[abs(events['peak']) > minPeak]
+    if min_peak > 0:
+        events = events[abs(events['peak']) > min_peak]
     
-    if minSum > 0:
-        events = events[abs(events['sum']) > minSum]
+    if min_sum > 0:
+        events = events[abs(events['sum']) > min_sum]
     
         
     return events

@@ -175,12 +175,17 @@ class Recording(object):
 
     @property
     def channels(self):
-        """A list of channels included in this device sweep.
+        """A list of channels included in this recording.
         """
 
     @property
     def start_time(self):
         """The starting time (unix epoch) of this recording.
+        """
+
+    @property
+    def sample_rate(self):
+        """The sample rate (samples/sec) of the recording.
         """
 
 
@@ -198,7 +203,7 @@ class PatchClampRecording(Recording):
         """
 
     @property
-    def membrane_potential(self):
+    def holding_potential(self):
         """The holding potential if the recording is voltage-clamp, or the
         resting membrane potential if the recording is current-clamp.
         """
