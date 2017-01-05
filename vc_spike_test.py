@@ -5,6 +5,7 @@ from neuroanalysis.nwb_viewer import PlotGrid
 
 # Load test data
 data = np.load('test_data/evoked_spikes/vc_evoked_spikes.npz')['arr_0']
+dt = 20e-6
 
 # Initialize Qt
 pg.mkQApp()
@@ -25,6 +26,11 @@ for i in range(data.shape[0]):
 
     # link all x-axes together
     plot.setXLink(win[0, 0])
+    xaxis = plot.getAxis('bottom')
+    if i == data.shape[0]-1:
+        xaxis.setLabel('Time', 's')
+    else:
+        xaxis.hide()
 
     # use stimulus to find pulse edges
     diff = np.diff(stim)   # np.diff() gives first derivative
@@ -37,24 +43,36 @@ for i in range(data.shape[0]):
     chunk = trace[start:stop]
 
     # plot the selected chunk
-    plot.plot(chunk)
+    t = np.arange(chunk.shape[0]) * dt
+    plot.plot(t, chunk)
 
     # detect spike times
-    dt = 10e-6
-    delay = int(150e-6 / dt)  # 150us window after stimulus should be ignored
-    spikes = []
+    delay = int(100e-6 / dt)  # 100us window after stimulus should be ignored
+    peak_inds = []
+    rise_inds = []
     for j in range(8):  # loop over pulses
         # select just the portion of the chunk that contains the pulse
         pstart = on_times[j+1] - start + delay
         pstop = off_times[j+1] - start
         # find the location of the minimum value during the pulse
-        smooth = ndi.gaussian_filter(chunk[pstart:pstop], 3)
-        ind = np.argmin(smooth) + pstart
+        sigma = 10e-6 / dt
+        smooth = ndi.gaussian_filter(chunk[pstart:pstop], sigma)
+        peak_ind = np.argmin(smooth) + pstart
         # a spike is detected only if the peak is at least 50pA less than the final value before pulse offset
         margin = 50e-12
-        if chunk[ind] < chunk[pstop] - margin:
-            spikes.append(ind)
+        if chunk[peak_ind] < chunk[pstop] - margin:
+            peak_inds.append(peak_ind)
+            
+            # Walk backward to the point of max dv/dt
+            dvdt = np.diff(smooth)
+            rise_ind = np.argmin(dvdt[:peak_ind]) + pstart
+            rise_inds.append(rise_ind)
 
-    # display spike times as ticks
-    ticks = pg.VTickGroup(spikes, yrange=[0, 0.3], pen='r')
-    plot.addItem(ticks)
+    # display spike rise and peak times as ticks
+    pticks = pg.VTickGroup(np.array(peak_inds) * dt, yrange=[0, 0.3], pen='r')
+    rticks = pg.VTickGroup(np.array(rise_inds) * dt, yrange=[0, 0.3], pen='y')
+    plot.addItem(pticks)
+    plot.addItem(rticks)
+    
+    
+    
