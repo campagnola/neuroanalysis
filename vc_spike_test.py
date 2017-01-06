@@ -7,8 +7,12 @@ from neuroanalysis.nwb_viewer import PlotGrid
 data = np.load('test_data/evoked_spikes/vc_evoked_spikes.npz')['arr_0']
 dt = 20e-6
 
+# gaussian filtering constant
+sigma = 20e-6 / dt
+
 # Initialize Qt
 pg.mkQApp()
+#pg.dbg()
 
 # Create a window with a grid of plots (N rows, 1 column)
 win = PlotGrid()
@@ -44,10 +48,11 @@ for i in range(data.shape[0]):
 
     # plot the selected chunk
     t = np.arange(chunk.shape[0]) * dt
+    plot.plot(t[:-1], np.diff(ndi.gaussian_filter(chunk, sigma)), pen=0.5)
     plot.plot(t, chunk)
 
     # detect spike times
-    delay = int(100e-6 / dt)  # 100us window after stimulus should be ignored
+    delay = int(150e-6 / dt)  # short window after stimulus should be ignored
     peak_inds = []
     rise_inds = []
     for j in range(8):  # loop over pulses
@@ -55,17 +60,17 @@ for i in range(data.shape[0]):
         pstart = on_times[j+1] - start + delay
         pstop = off_times[j+1] - start
         # find the location of the minimum value during the pulse
-        sigma = 10e-6 / dt
         smooth = ndi.gaussian_filter(chunk[pstart:pstop], sigma)
-        peak_ind = np.argmin(smooth) + pstart
+        peak_ind = np.argmin(smooth)
         # a spike is detected only if the peak is at least 50pA less than the final value before pulse offset
         margin = 50e-12
-        if chunk[peak_ind] < chunk[pstop] - margin:
-            peak_inds.append(peak_ind)
+        if smooth[peak_ind] < smooth[-1] - margin:
+            peak_inds.append(peak_ind + pstart)
             
             # Walk backward to the point of max dv/dt
             dvdt = np.diff(smooth)
-            rise_ind = np.argmin(dvdt[:peak_ind]) + pstart
+            rstart = max(0, peak_ind - int(1e-3/dt))  # don't search for rising phase more than 1ms before peak
+            rise_ind = np.argmin(dvdt[rstart:peak_ind]) + pstart + rstart
             rise_inds.append(rise_ind)
 
     # display spike rise and peak times as ticks
