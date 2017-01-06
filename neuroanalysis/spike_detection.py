@@ -34,18 +34,33 @@ def detect_evoked_spike(trace, pulse_start, pulse_stop, pulse_amp, search_durati
         raise ValueError("Unsupported clamp mode %s" % trace.clamp_mode)
 
 
-def _detect_evoked_spike_vc(trace, pulse_start, pulse_stop, pulse_amp, search_duration):
-    baseline = trace.view(time_range=[pulse_start-5e-3, pulse_start], channel='primary')
-    noise = baseline.data.std()
-    trace = trace.view(time_range=[pulse_start, pulse_start + search_duration], channel='primary')
-    dt = 1.0 / trace.sample_rate
-    y = trace.data
-    y2 = np.diff(np.diff(y))
-    events = zero_crossing_events(y, min_length=int(50e-6/dt), min_peak=noise*3)
-    mask = (events['index'] < 10e-6/dt) | ((events['index'] > pulse_stop/dt) & (events['index'] < (pulse_stop+10e-6)/dt))
-    events = events[~mask]
-    ind = np.argmax(events['peak'])
-    return {'index': events[ind]['index'] + trace.time_offset, 'peak': events[ind]['peak'], 'noise': noise}
+def _detect_evoked_spike_vc(trace, pulse_start, pulse_stop, pulse_amp, search_duration, sigma=20e-6):
+    dt = trace.dt
+    sigma = sigma / dt
+    
+    delay = int(150e-6 / dt)  # short window after stimulus should be ignored
+    peak_inds = []
+    rise_inds = []
+    for j in range(8):  # loop over pulses
+        # select just the portion of the chunk that contains the pulse
+        pstart = on_times[j+1] - start + delay
+        pstop = off_times[j+1] - start
+        # find the location of the minimum value during the pulse
+        smooth = ndi.gaussian_filter(chunk[pstart:pstop], sigma)
+        peak_ind = np.argmin(smooth)
+        # a spike is detected only if the peak is at least 50pA less than the final value before pulse offset
+        margin = 50e-12
+        if smooth[peak_ind] < smooth[-1] - margin:
+            peak_inds.append(peak_ind + pstart)
+            
+            # Walk backward to the point of max dv/dt
+            dvdt = np.diff(smooth)
+            rstart = max(0, peak_ind - int(1e-3/dt))  # don't search for rising phase more than 1ms before peak
+            rise_ind = np.argmin(dvdt[rstart:peak_ind]) + pstart + rstart
+            rise_inds.append(rise_ind)
+
+
+
 
 def _detect_evoked_spike_ic(trace, pulse_start, pulse_stop, pulse_amp, search_duration):
     raise NotImplementedError()
