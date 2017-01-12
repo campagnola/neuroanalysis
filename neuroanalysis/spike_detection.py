@@ -34,31 +34,27 @@ def detect_evoked_spike(trace, pulse_start, pulse_stop, pulse_amp, search_durati
         raise ValueError("Unsupported clamp mode %s" % trace.clamp_mode)
 
 
-def _detect_evoked_spike_vc(trace, pulse_start, pulse_stop, pulse_amp, search_duration, sigma=20e-6):
+def detect_vc_evoked_spike(trace, pulse_start, pulse_stop, sigma=20e-6, delay=150e-6, threshold=50e-12):
     dt = trace.dt
-    sigma = sigma / dt
-    
-    delay = int(150e-6 / dt)  # short window after stimulus should be ignored
-    peak_inds = []
-    rise_inds = []
-    for j in range(8):  # loop over pulses
-        # select just the portion of the chunk that contains the pulse
-        pstart = on_times[j+1] - start + delay
-        pstop = off_times[j+1] - start
-        # find the location of the minimum value during the pulse
-        smooth = ndi.gaussian_filter(chunk[pstart:pstop], sigma)
-        peak_ind = np.argmin(smooth)
-        # a spike is detected only if the peak is at least 50pA less than the final value before pulse offset
-        margin = 50e-12
-        if smooth[peak_ind] < smooth[-1] - margin:
-            peak_inds.append(peak_ind + pstart)
-            
-            # Walk backward to the point of max dv/dt
-            dvdt = np.diff(smooth)
-            rstart = max(0, peak_ind - int(1e-3/dt))  # don't search for rising phase more than 1ms before peak
-            rise_ind = np.argmin(dvdt[rstart:peak_ind]) + pstart + rstart
-            rise_inds.append(rise_ind)
+    assert search_duration <= pulse_stop - pulse_start
 
+    # select just the portion of the chunk that contains the pulse
+    pstart = pulse_start + delay
+    pstop = pulse_stop
+    # find the location of the minimum value during the pulse
+    smooth = ndi.gaussian_filter(chunk[pstart:pstop], int(sigma/dt))
+    peak_ind = np.argmin(smooth)
+    # a spike is detected only if the peak is at least 50pA less than the final value before pulse offset
+    if smooth[peak_ind] < smooth[-1] - threshold:
+        # Walk backward to the point of max dv/dt
+        dvdt = np.diff(smooth)
+        rstart = max(0, peak_ind - int(1e-3/dt))  # don't search for rising phase more than 1ms before peak
+        rise_ind = np.argmin(dvdt[rstart:peak_ind]) + pstart + rstart
+        rise_inds.append(rise_ind)
+
+        return {'peak_ind': peak_ind + pstart, 'rise_ind': rise_ind}
+    else:
+        return None
 
 
 
