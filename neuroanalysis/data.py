@@ -4,7 +4,7 @@ Data Abstraction Layer
 
 These classes present a high-level API for handling data from various types of neurophysiology experiments.
 They do not implement functionality for reading any particular type of data file, though. Rather, they
-provide a high-level abstraction layer that separates analysis and visualization from the idiosyncratic
+provide an abstraction layer that separates analysis and visualization from the idiosyncratic
 details of any particular data acquisition system.
 
 Each data acquisition system can provide a set of subclasses to adapt its data formats to this API
@@ -161,32 +161,45 @@ device_tree = {
 
 class Recording(object):
     """Representation of a single continuous data acquisition from a single device,
-    possibly with multiple channels of data.
+    possibly with multiple channels of data (for example, a recording from a single
+    patch-clamp headstage with input and output channels, or ).
+    
+    Each channel is described by a single Trace instance. Channels are often 
+    recorded with the same timebase, but this is not strictly required.
     """
-    def __init__(self):
-        pass
-
+    def __init__(self, channels, **kwds):
+        self._properties = {
+            'device_type': kwds.pop('device_type', None),
+        }
+        if len(kwds) > 0:
+            raise TypeError("Invalid keyword arguments: %s" % list(kwds.keys()))
+        
+        channels = OrderedDict(channels)
+        for k,v in channels.items():
+            assert isinstance(v, Trace)
+        self._channels = channels
+        
     @property
     def device_type(self):
         """A string representing the type of device that generated this recording.
 
         Strings should be described in the global ``device_tree``.        
         """
+        return self._properties['device_type']
 
     @property
     def channels(self):
         """A list of channels included in this recording.
         """
+        return self._channels.keys()
 
     @property
     def start_time(self):
         """The starting time (unix epoch) of this recording.
         """
 
-    @property
-    def sample_rate(self):
-        """The sample rate (samples/sec) of the recording.
-        """
+    def __getitem__(self, chan):
+        return self._channels[chan]
 
 
 class PatchClampRecording(Recording):
@@ -200,6 +213,11 @@ class PatchClampRecording(Recording):
     @property
     def clamp_mode(self):
         """The mode of the patch clamp amplifier: 'vc', 'ic', or 'i0'.
+        """
+
+    @property
+    def patch_mode(self):
+        """The state of the membrane patch. E.g. 'whole cell', 'cell attached', 'loose seal', 'bath', 'inside out', 'outside out'
         """
 
     @property
@@ -219,7 +237,69 @@ class PatchClampRecording(Recording):
         """
 
 
+class Trace(object):
+    """A homogeneous time series data set. 
+    
+    This is a representation of a single stream of data recorded over time. The
+    data must be representable as a single N-dimensional array where the first
+    array axis is time. 
+    
+    Examples:
+    
+    * A membrane potential recording from a single current-clamp headstage
+    * A video stream from a camera
+    * A digital trigger waveform
+    
+    Traces may specify units, a starting time, and either a sample period or an
+    array of time values.
+    """
+    def __init__(self, data, dt=None, start_time=None, time_values=None, units=None):
+        self._data = data
+        self._start_time = start_time
+        self._dt = dt
+        self._time_values = time_values
+        self._units = units
+        
+    @property
+    def data(self):
+        return self._data
+        
+    @property
+    def start_time(self):
+        return self._start_time
+    
+    @property
+    def sample_rate(self):
+        if self._dt is None:
+            raise TypeError("Trace sample rate was not specified.")
+        return 1.0 / self._dt
 
+    @property
+    def dt(self):
+        return self._dt
+    
+    @property
+    def units(self):
+        return self._units
+
+    @property
+    def time_values(self):
+        if self._time_values is None:
+            if self._dt is None:
+                raise TypeError("No time values or sample rate were specified for this Trace.")
+            self._time_values = np.arange(len(self._data)) * self.dt
+
+    @property
+    def shape(self):
+        return self._data.shape
+
+    @property
+    def ndim(self):
+        return self._data.ndim
+    
+
+# TODO: this class should not be a subclass of PatchClampRecording
+# Instead, it should have a PatchClampRecording instance as an attribute.
 class PatchClampTestPulse(PatchClampRecording):    
     @property
     def access_resistance(self):
