@@ -5,39 +5,27 @@ from scipy.ndimage import gaussian_filter
 from .data import Trace, PatchClampRecording
 
 
-def detect_evoked_spike(trace, pulse_start, pulse_stop, pulse_amp, search_duration=None):
+def detect_evoked_spike(data, pulse_edges, **kwds):
     """Return a dict describing an evoked spike in a patch clamp recording, or None if no spike is detected.
 
     Parameters
     ==========
-    trace : PatchClampRecording
+    data : PatchClampRecording
         The recorded patch clamp data. The recording should be made with a brief pulse intended
         to evoke a single spike with short latency.
-    pulse_start : float
-        The start time (sec) of the pulse intended to evoke a spike.
-    pulse_stop : float
-        The end time (sec) of the pulse intended to evoke a spike.
-    pulse_amp : float
-        The amplitude (A for current clamp, V for voltage clamp) of the pulse.
-    search_duration : float
-        The time duration (sec) following the onset of the stimulus to search for an evoked spike.
-        By default, this is set to ``max(0.002, 2*(pulse_stop-pulse_start))``.
+    pulse_edges : (int, int)
+        The start and end indices of the stimulation pulse. 
     """
-    pulse_start = float(pulse_start)
-    pulse_stop = float(pulse_stop)
-    pulse_amp = float(pulse_amp)
-    if search_duration is None:
-        search_duration = max(0.002, 2 * (pulse_stop-pulse-start))
-
-    if trace.clamp_mode == 'vc':
-        return detect_evoked_spike_vc(trace, pulse_start, pulse_stop, pulse_amp)
-    elif trace.clamp_mode == 'ic':
-        return detect_evoked_spike_ic(trace, pulse_start, pulse_stop, pulse_amp)
+    trace = data['primary']
+    if data.clamp_mode == 'vc':
+        return detect_evoked_spike_vc(trace, pulse_edges, **kwds)
+    elif data.clamp_mode == 'ic':
+        return detect_evoked_spike_ic(trace, pulse_edges, **kwds)
     else:
         raise ValueError("Unsupported clamp mode %s" % trace.clamp_mode)
 
 
-def detect_vc_evoked_spike(trace, pulse_edges=None, pulse_indices=None, sigma=20e-6, delay=150e-6, threshold=50e-12):
+def detect_vc_evoked_spike(trace, pulse_edges, sigma=20e-6, delay=150e-6, threshold=50e-12):
     """Return a dict describing an evoked spike in a patch clamp recording, or None if no spike is detected.
 
     This function assumes that a square voltage pulse is used to evoke an unclamped spike
@@ -49,12 +37,8 @@ def detect_vc_evoked_spike(trace, pulse_edges=None, pulse_indices=None, sigma=20
     trace : Trace instance
         The recorded patch clamp data. The recording should be made with a brief pulse intended
         to evoke a single spike with short latency.
-    pulse_edges : (float, float)
-        The start and end times (sec) of the stimulation pulse intended to evoke a spike.
-        Either *pulse_edges* or *pulse_indices* must be given.
-    pulse_indices : (int, int)
+    pulse_edges : (int, int)
         The start and end indices of the stimulation pulse. 
-        Either *pulse_edges* or *pulse_indices* must be given.
     sigma : float
         Time constant (sec) for a gaussian filter used to smooth the trace before 
         peak detection. default is 20 us.
@@ -91,15 +75,8 @@ def detect_vc_evoked_spike(trace, pulse_edges=None, pulse_indices=None, sigma=20
 
     # select just the portion of the trace that contains the pulse, excluding a short
     # delay after the pulse onset
-    if pulse_edges is not None:
-        assert pulse_indices is None
-        pstart = int((pulse_edges[0] + delay) / dt)
-        pstop = int(pulse_edges[1] / dt)
-    elif pulse_indices is not None:
-        pstart, pstop = pulse_indices
-        pstart += int(delay / dt)
-    else:
-        raise TypeError("Must specify either pulse_edges or pulse_indices.")
+    pstart = pulse_edges[0] + int(delay / dt)
+    pstop = pulse_edges[1]
 
     # find the location of the minimum value during the pulse
     smooth = gaussian_filter(trace.data[pstart:pstop], int(sigma/dt))

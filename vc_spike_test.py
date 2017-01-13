@@ -55,29 +55,12 @@ for i in range(data.shape[0]):
     plot.plot(t, chunk)
 
     # detect spike times
-    #delay = int(150e-6 / dt)  # short window after stimulus should be ignored
     peak_inds = []
     rise_inds = []
     for j in range(8):  # loop over pulses
-        ## select just the portion of the chunk that contains the pulse
-        #pstart = on_times[j+1] - start + delay
-        #pstop = off_times[j+1] - start
-        ## find the location of the minimum value during the pulse
-        #smooth = ndi.gaussian_filter(chunk[pstart:pstop], sigma)
-        #peak_ind = np.argmin(smooth)
-        ## a spike is detected only if the peak is at least 50pA less than the final value before pulse offset
-        #margin = 50e-12
-        #if smooth[peak_ind] < smooth[-1] - margin:
-            #peak_inds.append(peak_ind + pstart)
-            
-            ## Walk backward to the point of max dv/dt
-            #dvdt = np.diff(smooth)
-            #rstart = max(0, peak_ind - int(1e-3/dt))  # don't search for rising phase more than 1ms before peak
-            #rise_ind = np.argmin(dvdt[rstart:peak_ind]) + pstart + rstart
-            #rise_inds.append(rise_ind)
         pstart = on_times[j+1] - start
         pstop = off_times[j+1] - start
-        spike_info = detect_vc_evoked_spike(Trace(chunk, dt=dt), pulse_indices=(pstart, pstop))
+        spike_info = detect_vc_evoked_spike(Trace(chunk, dt=dt), pulse_edges=(pstart, pstop))
         if spike_info is not None:
             peak_inds.append(spike_info['peak_index'])
             rise_inds.append(spike_info['rise_index'])
