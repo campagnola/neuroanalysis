@@ -3,13 +3,11 @@ import numpy as np
 import pyqtgraph as pg
 from allensdk.core.brain_observatory_cache import BrainObservatoryCache
 from allensdk.brain_observatory.locally_sparse_noise import LocallySparseNoise
-from calcium_analysis.sta_analyzer import STAAnalyzer
+from neuroanalysis.sta_analyzer import STAAnalyzer
 import user
 
 
-drive_path = '/media/luke/Brain2016/'
-manifest_path = os.path.join(drive_path,'BrainObservatory','manifest.json')
-boc = BrainObservatoryCache(manifest_file=manifest_path)
+boc = BrainObservatoryCache()
 
 cont_id = 511510670
 cont_info = boc.get_ophys_experiments(experiment_container_ids=[cont_id])
