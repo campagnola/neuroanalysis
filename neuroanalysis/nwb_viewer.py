@@ -161,6 +161,36 @@ class MiesNwbViewer(QtGui.QWidget):
         return sweeps
 
 
+
+class AnalysisView(QtGui.QWidget):
+    """Example skeleton for an analysis view.
+    """
+    def __init__(self, parent=None):
+        QtGui.QWidget.__init__(self, parent)
+        
+        # Views must have self.params
+        # This implements the controls that are unique to this view.
+        self.params = pg.parametertree.Parameter(name='params', type='group', children=[
+            {'name': 'lowpass', 'type': 'float', 'value': 0, 'limits': [0, None], 'step': 1},
+            {'name': 'average', 'type': 'bool', 'value': False},
+        ])
+        self.params.sigTreeStateChanged.connect(self._update_analysis)
+
+    def show_sweeps(self, sweeps):
+        """Called when the user selects a different set of sweeps.
+        """
+        self.sweeps = sweeps
+        if len(sweeps) == 0:
+            self.plots.clear()
+        else:
+            self._update_plots()
+    
+    def _update_analysis(self, param, changes):
+        """Called when the user changes control parameters.
+        """
+        pass
+
+
 class SweepView(QtGui.QWidget):
     def __init__(self, parent=None):
         self.sweeps = []
