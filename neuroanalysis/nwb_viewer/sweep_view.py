@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.ndimage import gaussian_filter
 import pyqtgraph as pg
+import pyqtgraph.reload
 from pyqtgraph.Qt import QtGui, QtCore
 from .plotgrid import PlotGrid
 from ..miesnwb import MiesNwb, SweepGroup

@@ -4,6 +4,7 @@ from neuroanalysis.miesnwb import MiesNwb, SweepGroup
 
 from .sweep_view import SweepView
 from .multipatch_view import MultipatchMatrixView
+from .analyzer_view import AnalyzerView
 
 
 class MiesNwbExplorer(QtGui.QWidget):
@@ -99,6 +100,8 @@ class MiesNwbViewer(QtGui.QWidget):
     """Combination of a MiesNwvExplorer for selecting sweeps and a tab widget
     containing multiple views, each performing a different analysis.
     """
+    analyzer_changed = QtCore.Signal(object)
+    
     def __init__(self, nwb=None):
         QtGui.QWidget.__init__(self)
         self.nwb = nwb
@@ -124,15 +127,14 @@ class MiesNwbViewer(QtGui.QWidget):
         
         self.tabs = QtGui.QTabWidget()
         self.hsplit.addWidget(self.tabs)
+        
+        self.reload_btn = QtGui.QPushButton("Reload views")
+        self.reload_btn.clicked.connect(self.reload_views)
+        self.vsplit.addWidget(self.reload_btn)
 
-        self.views = [
-            ('Sweep', SweepView(self)),
-            ('Matrix', MultipatchMatrixView(self)),
-        ]
-
-        for name, view in self.views:
-            self.tabs.addTab(view, name)
-
+        self.views = []
+        self.create_views()
+        
         self.resize(1000, 800)
         self.hsplit.setSizes([150, 850])
 
@@ -145,13 +147,21 @@ class MiesNwbViewer(QtGui.QWidget):
 
     def data_selection_changed(self, selection):
         sweeps = self.selected_sweeps(selection)
-        self.tabs.currentWidget().show_sweeps(sweeps)
+        with pg.BusyCursor():
+            self.tabs.currentWidget().show_sweeps(sweeps)
 
     def tab_changed(self):
         w = self.tabs.currentWidget()
+        if w is None:
+            self.ptree.clear()
+            return
         self.ptree.setParameters(w.params, showTop=False)
         sweeps = self.selected_sweeps()
         w.show_sweeps(sweeps)
+        self.analyzer_changed.emit(self)
+        
+    def selected_analyzer(self):
+        return self.tabs.currentWidget()
 
     def selected_sweeps(self, selection=None):
         if selection is None:
@@ -163,6 +173,29 @@ class MiesNwbViewer(QtGui.QWidget):
             else:
                 sweeps.append(item)
         return sweeps
+
+    def reload_views(self):
+        """Remove all existing views, reload their source code, and create new
+        views.
+        """
+        self.clear_views()
+        pg.reload.reloadAll(verbose=True)
+        self.create_views()
+
+    def clear_views(self):
+        self.tabs.clear()
+        self.views = []
+        
+    def create_views(self):
+        self.clear_views()
+        self.views = [
+            ('Sweep', SweepView(self)),
+            ('Matrix', MultipatchMatrixView(self)),
+            ('Sandbox', AnalyzerView(self)),
+        ]
+
+        for name, view in self.views:
+            self.tabs.addTab(view, name)
 
 
 

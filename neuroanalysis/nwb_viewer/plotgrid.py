@@ -65,3 +65,9 @@ class PlotGrid(QtGui.QWidget):
     def enableAutoRange(self, *args, **kwds):
         self._call_on_plots('enableAutoRange', *args, **kwds)
 
+    def setXLink(self, *args, **kwds):
+        self._call_on_plots('setXLink', *args, **kwds)
+
+    def setYLink(self, *args, **kwds):
+        self._call_on_plots('setYLink', *args, **kwds)
+        

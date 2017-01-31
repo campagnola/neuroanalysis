@@ -1,11 +1,23 @@
 import os, sys
 import acq4
 from acq4.pyqtgraph.Qt import QtCore, QtGui
+import acq4.pyqtgraph.console
 from neuroanalysis.nwb_viewer import MiesNwbViewer
 from neuroanalysis.miesnwb import MiesNwb
 
 # open a console for debugging
-console = acq4.pyqtgraph.dbg()
+message = """Console variables:
+
+  analyzer : The currently active analyzer
+  sweeps : A list of the currently selected sweeps
+  view : The MiesNwbViewer instance
+  nwb : The currently loaded NWB file
+  man : ACQ4 manager
+  man.currentFile : currently selected file in ACQ4 DataManager module
+
+"""
+console = acq4.pyqtgraph.console.ConsoleWidget(text=message)
+console.show()
 
 # start up ACQ4 data manager
 m = acq4.Manager.Manager(argv=['-D', '-n', '-m', 'Data Manager'])
@@ -34,7 +46,14 @@ v.vsplit.insertWidget(0, btn)
 btn.clicked.connect(load_from_dm)
 
 # make a few variables available from the console
-console.localNamespace.update({'man': m, 'view': v, 'nwb': None})
+console.localNamespace.update({'man': m, 'view': v, 'nwb': None, 'sweeps': [], 'analyzer': None})
+
+# make selected sweeps / analyzer available as well
+def update_namespace():
+    console.localNamespace.update({'sweeps': v.selected_sweeps(), 'analyzer': v.selected_analyzer()})
+
+v.analyzer_changed.connect(update_namespace)
+v.explorer.selection_changed.connect(update_namespace)
 
 # Set up code reloading shortcut
 def reload_all():
