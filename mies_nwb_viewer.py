@@ -1,6 +1,8 @@
 import sys
 import acq4
-from neuroanalysis.nwb_viewer import MiesNwbViewer, MiesNwb
+from neuroanalysis.nwb_viewer import MiesNwbViewer
+from neuroanalysis.miesnwb import MiesNwb
+
 acq4.pyqtgraph.dbg()
 
 m = acq4.Manager.Manager(argv=['-D', '-n', '-m', 'Data Manager'])
