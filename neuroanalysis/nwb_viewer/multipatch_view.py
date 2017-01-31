@@ -35,24 +35,35 @@ class MultipatchMatrixView(QtGui.QWidget):
     def show_group(self, grp):
         self.show_sweeps(grp.sweeps)
 
-    def show_sweeps(self, sweeps):
+    def data_selected(self, sweeps, channels):
         self.sweeps = sweeps
-        if len(sweeps) == 0:
-            self.plots.clear()
-        else:
-            self._update_plots(autoRange=True)
+        self.channels = channels
+        self._update_plots()
+        self._update_plots(autoRange=True)
 
     def _params_changed(self, *args):
         self._update_plots()
 
     def _update_plots(self, autoRange=False):
         sweeps = self.sweeps
+        chans = self.channels
+        self.plots.clear()
+        if len(sweeps) == 0 or len(chans) == 0:
+            return
+        
+        # collect data
         data = MiesNwb.pack_sweep_data(sweeps)
         data, stim = data[...,0], data[...,1]  # unpack stim and recordings
         dt = sweeps[0].traces().values()[0].sample_rate / 1000.
 
-        modes = [trace.meta()['Clamp Mode'] for trace in sweeps[0].traces().values()]
-        headstages = [trace.headstage_id for trace in sweeps[0].traces().values()]
+        # mask for selected channels
+        mask = np.array([ch in chans for ch in sweeps[0].channels()])
+        data = data[:, mask]
+        stim = stim[:, mask]
+        chans = np.array(sweeps[0].channels())[mask]
+
+        modes = [sweeps[0].traces()[ch].meta()['Clamp Mode'] for ch in chans]
+        headstages = [sweeps[0].traces()[ch].headstage_id for ch in chans]
         
         # get pulse times for each channel
         stim = stim[0]
@@ -90,7 +101,6 @@ class MultipatchMatrixView(QtGui.QWidget):
         n_sweeps = data.shape[0]
         n_channels = data.shape[1]
         self.plots.set_shape(n_channels, n_channels)
-        self.plots.clear()
         self.plots.setClipToView(True)
         self.plots.setDownsampling(True, True, 'peak')
         self.plots.enableAutoRange(False, False)
@@ -183,9 +193,9 @@ class MultipatchMatrixView(QtGui.QWidget):
                     plt.getAxis('left').setVisible(False)
 
                 if i == n_channels - 1:
-                    plt.setLabels(bottom=('CH%d'%sweeps[0].traces().values()[j].headstage_id, 's'))
+                    plt.setLabels(bottom=('CH%d'%sweeps[0].traces()[chans[j]].headstage_id, 's'))
                 if j == 0:
-                    plt.setLabels(left=('CH%d'%sweeps[0].traces().values()[i].headstage_id, 'A' if modes[i] == 0 else 'V'))
+                    plt.setLabels(left=('CH%d'%sweeps[0].traces()[chans[i]].headstage_id, 'A' if modes[i] == 0 else 'V'))
 
         if autoRange:
             r = 14e-12 if modes[i] == 0 else 5e-3

@@ -44,7 +44,7 @@ class PlotGrid(QtGui.QWidget):
                 p = self[i, j]
                 p.hide()
                 p.close()
-                p.scene().removeItem(p)
+                self.grid.removeItem(p)
         self.plots = []
 
     def _call_on_plots(self, m, *args, **kwds):

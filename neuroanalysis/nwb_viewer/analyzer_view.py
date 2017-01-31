@@ -32,25 +32,24 @@ class AnalyzerView(QtGui.QWidget):
         ])
         self.params.sigTreeStateChanged.connect(self._update_plots)
 
-    def show_sweeps(self, sweeps):
+    def data_selected(self, sweeps, channels):
         self.sweeps = sweeps
-        if len(sweeps) == 0:
-            self.plots.clear()
-        else:
-            self._update_plots()
+        self.channels = channels
+        self._update_plots()
 
     def _update_plots(self):
         sweeps = self.sweeps
+        channels = self.channels
         
         # clear all plots
         self.plots.clear()
         
-        # If there are no selected sweeps, return now
-        if len(sweeps) == 0:
+        # If there are no selected sweeps or channels, return now
+        if len(sweeps) == 0 or len(channels) == 0:
             return
         
-        # Resize the plot grid based on the number of channels in the first sweep
-        n_channels = len(sweeps[0].channels())
+        # Resize the plot grid based on the number of selected channels
+        n_channels = len(channels)
         self.plots.set_shape(n_channels, 1)
         
         # Set some plot options to improve performance
@@ -60,8 +59,13 @@ class AnalyzerView(QtGui.QWidget):
         # Link all x axes
         self.plots.setXLink(self.plots[0, 0])
         
-        # Iterate overall channels of all sweeps, plotting traces one at a time
+        # Iterate over selected channels of all sweeps, plotting traces one at a time
         for sweep in sweeps:
-            data = sweep.data()
             for i in range(n_channels):
-                self.plots[i,0].plot(data[i, :, 0], antialias=True)
+                chan = channels[i]
+                trace = sweep.traces()[chan]
+                self.plots[i,0].plot(trace.recording(), antialias=True)
+                
+        # label plots
+        for i,ch in enumerate(channels):
+            self.plots[i,0].setLabels(left="Channel %d" % sweeps[0].traces()[ch].headstage_id)

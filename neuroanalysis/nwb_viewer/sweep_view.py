@@ -10,6 +10,7 @@ from ..miesnwb import MiesNwb, SweepGroup
 class SweepView(QtGui.QWidget):
     def __init__(self, parent=None):
         self.sweeps = []
+        self.chans = None
 
         QtGui.QWidget.__init__(self, parent)
 
@@ -26,23 +27,32 @@ class SweepView(QtGui.QWidget):
         ])
         self.params.sigTreeStateChanged.connect(self._update_plots)
 
-    def show_sweeps(self, sweeps):
+    def data_selected(self, sweeps, channels):
         self.sweeps = sweeps
-        if len(sweeps) == 0:
-            self.plots.clear()
-        else:
-            self._update_plots()
+        self.channels = channels
+        self._update_plots()
 
     def _update_plots(self):
         sweeps = self.sweeps
-        data = MiesNwb.pack_sweep_data(sweeps)
+        chans = self.channels
+        
+        self.plots.clear()
+        if len(sweeps) == 0 or len(chans) == 0:
+            return
+        
+        # collect data
+        data = MiesNwb.pack_sweep_data(sweeps)  # returns (sweeps, channels, samples, 2)
         data, stim = data[...,0], data[...,1]  # unpack stim and recordings
         dt = sweeps[0].traces().values()[0].sample_rate
         t = np.arange(data.shape[2]) * dt
 
+        # mask for selected channels
+        mask = np.array([ch in chans for ch in sweeps[0].channels()])
+        data = data[:, mask]
+        chans = np.array(sweeps[0].channels())[mask]
+
         # setup plot grid
-        self.plots.clear()
-        self.plots.set_shape(data.shape[1], 1)
+        self.plots.set_shape(len(chans), 1)
         self.plots.setClipToView(True)
         self.plots.setDownsampling(True, True, 'peak')
 
@@ -65,7 +75,7 @@ class SweepView(QtGui.QWidget):
         # set axis labels / units
         for j in range(data.shape[1]):
             sw = sweeps[0]
-            ch = sw.channels()[j]
+            ch = chans[j]
             tr = sw.traces()[ch]
             units = 'A' if tr.meta()['Clamp Mode'] == 0 else 'V'
             self.plots[j, 0].setLabels(left=("Channel %d" % tr.headstage_id, units))

@@ -11,11 +11,13 @@ class MiesNwbExplorer(QtGui.QWidget):
     """Widget for listing and selecting recordings in a MIES-generated NWB file.
     """
     selection_changed = QtCore.Signal(object)
+    channels_changed = QtCore.Signal(object)
 
     def __init__(self, nwb=None):
         QtGui.QWidget.__init__(self)
 
         self._nwb = None
+        self._channel_selection = {}
 
         self.layout = QtGui.QGridLayout()
         self.layout.setContentsMargins(0, 0, 0, 0)
@@ -34,9 +36,13 @@ class MiesNwbExplorer(QtGui.QWidget):
         self.sweep_tree.setHeaderLabels(['Stim Name', 'Clamp Mode', 'Holding'])
         self.sweep_tree.setSelectionMode(QtGui.QAbstractItemView.ExtendedSelection)
         self.layout.addWidget(self.sweep_tree, 1, 0)
+        
+        self.channel_list = QtGui.QListWidget()
+        self.layout.addWidget(self.channel_list, 2, 0)
+        self.channel_list.itemChanged.connect(self._channel_list_changed)
 
         self.meta_tree = pg.DataTreeWidget()
-        self.layout.addWidget(self.meta_tree, 2, 0)
+        self.layout.addWidget(self.meta_tree, 3, 0)
 
         self.set_nwb(nwb)
 
@@ -44,6 +50,7 @@ class MiesNwbExplorer(QtGui.QWidget):
 
     def set_nwb(self, nwb):
         self._nwb = nwb
+        self._channel_selection = {}
         self.update_sweep_tree()
 
     def update_sweep_tree(self):
@@ -84,6 +91,49 @@ class MiesNwbExplorer(QtGui.QWidget):
             selection.append(item.data)
         return selection
 
+    def selected_channels(self):
+        chans = []
+        for i in range(self.channel_list.count()):
+            item = self.channel_list.item(i)
+            if item.checkState() == QtCore.Qt.Checked:
+                chans.append(item.channel_index)
+        return chans
+
+    def _update_channel_list(self):
+        self.channel_list.itemChanged.disconnect(self._channel_list_changed)
+        try:
+            # clear channel list
+            while self.channel_list.count() > 0:
+                self.channel_list.takeItem(0)
+            
+            # bail out if nothing is selected
+            sel = self.selection()
+            if len(sel) == 0:
+                return
+            
+            # get a list of all channels across all selected items
+            channels = []
+            for item in sel:
+                if isinstance(item, SweepGroup):
+                    if len(item.sweeps) == 0:
+                        continue
+                    item = item.sweeps[0]
+                channels.extend([(ch, item.traces()[ch].headstage_id) for ch in item.channels()])
+            channels = list(set(channels))
+            channels.sort()
+            
+            # add new items to the channel list, all selected
+            for ch,chid in channels:
+                item = QtGui.QListWidgetItem(str(chid))
+                item.channel_index = ch
+                self._channel_selection.setdefault(ch, True)
+                # restore previous check state, if any.
+                checkstate = QtCore.Qt.Checked if self._channel_selection.setdefault(ch, True) else QtCore.Qt.Unchecked
+                item.setCheckState(checkstate)
+                self.channel_list.addItem(item)
+        finally:
+            self.channel_list.itemChanged.connect(self._channel_list_changed)
+
     def _selection_changed(self):
         sel = self.selection()
         if len(sel) == 1:
@@ -93,7 +143,12 @@ class MiesNwbExplorer(QtGui.QWidget):
                 self.meta_tree.setData(sel[0].meta(all_chans=True))
         else:
             self.meta_tree.clear()
+        self._update_channel_list()
         self.selection_changed.emit(sel)
+        
+    def _channel_list_changed(self, item):
+        self.channels_changed.emit(self.selected_channels())
+        self._channel_selection[item.channel_index] = item.checkState() == QtCore.Qt.Checked
 
 
 class MiesNwbViewer(QtGui.QWidget):
@@ -120,6 +175,7 @@ class MiesNwbViewer(QtGui.QWidget):
 
         self.explorer = MiesNwbExplorer(self.nwb)
         self.explorer.selection_changed.connect(self.data_selection_changed)
+        self.explorer.channels_changed.connect(self.data_selection_changed)
         self.vsplit.addWidget(self.explorer)
 
         self.ptree = pg.parametertree.ParameterTree()
@@ -145,10 +201,11 @@ class MiesNwbViewer(QtGui.QWidget):
         self.nwb = nwb
         self.explorer.set_nwb(nwb)
 
-    def data_selection_changed(self, selection):
-        sweeps = self.selected_sweeps(selection)
+    def data_selection_changed(self):
+        sweeps = self.selected_sweeps()
+        chans = self.selected_channels()
         with pg.BusyCursor():
-            self.tabs.currentWidget().show_sweeps(sweeps)
+            self.tabs.currentWidget().data_selected(sweeps, chans)
 
     def tab_changed(self):
         w = self.tabs.currentWidget()
@@ -157,7 +214,8 @@ class MiesNwbViewer(QtGui.QWidget):
             return
         self.ptree.setParameters(w.params, showTop=False)
         sweeps = self.selected_sweeps()
-        w.show_sweeps(sweeps)
+        chans = self.selected_channels()
+        w.data_selected(sweeps, chans)
         self.analyzer_changed.emit(self)
         
     def selected_analyzer(self):
@@ -173,6 +231,9 @@ class MiesNwbViewer(QtGui.QWidget):
             else:
                 sweeps.append(item)
         return sweeps
+    
+    def selected_channels(self):
+        return self.explorer.selected_channels()
 
     def reload_views(self):
         """Remove all existing views, reload their source code, and create new
@@ -213,16 +274,14 @@ class AnalysisView(QtGui.QWidget):
         ])
         self.params.sigTreeStateChanged.connect(self._update_analysis)
 
-    def show_sweeps(self, sweeps):
+    def data_selected(self, sweeps, channels):
         """Called when the user selects a different set of sweeps.
         """
         self.sweeps = sweeps
-        if len(sweeps) == 0:
-            self.plots.clear()
-        else:
-            self._update_plots()
-    
-    def _update_analysis(self, param, changes):
+        self.channels = channels
+        self.update_analysis()
+
+    def update_analysis(self, param, changes):
         """Called when the user changes control parameters.
         """
         pass
