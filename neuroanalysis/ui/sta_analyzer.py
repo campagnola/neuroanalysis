@@ -2,7 +2,9 @@ import numpy as np
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui, QtCore
 import pyqtgraph.parametertree as pt
-from modules import CellSelector, SpikeDetector, TriggeredAverager
+from .cell_selector import CellSelector
+from .event_detection import SpikeDetector
+from .triggered_average import TriggeredAverager
 
 
 class STAAnalyzer(QtGui.QWidget):

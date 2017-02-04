@@ -7,21 +7,18 @@ from .multipatch_view import MultipatchMatrixView
 from .analyzer_view import AnalyzerView
 
 
-class MiesNwbExplorer(QtGui.QWidget):
+class MiesNwbExplorer(QtGui.QSplitter):
     """Widget for listing and selecting recordings in a MIES-generated NWB file.
     """
     selection_changed = QtCore.Signal(object)
     channels_changed = QtCore.Signal(object)
 
     def __init__(self, nwb=None):
-        QtGui.QWidget.__init__(self)
+        QtGui.QSplitter.__init__(self)
+        self.setOrientation(QtCore.Qt.Vertical)
 
         self._nwb = None
         self._channel_selection = {}
-
-        self.layout = QtGui.QGridLayout()
-        self.layout.setContentsMargins(0, 0, 0, 0)
-        self.setLayout(self.layout)
 
         # self.menu = QtGui.QMenuBar()
         # self.layout.addWidget(self.menu, 0, 0)
@@ -35,14 +32,14 @@ class MiesNwbExplorer(QtGui.QWidget):
         self.sweep_tree.setColumnCount(3)
         self.sweep_tree.setHeaderLabels(['Stim Name', 'Clamp Mode', 'Holding'])
         self.sweep_tree.setSelectionMode(QtGui.QAbstractItemView.ExtendedSelection)
-        self.layout.addWidget(self.sweep_tree, 1, 0)
+        self.addWidget(self.sweep_tree)
         
         self.channel_list = QtGui.QListWidget()
-        self.layout.addWidget(self.channel_list, 2, 0)
+        self.addWidget(self.channel_list)
         self.channel_list.itemChanged.connect(self._channel_list_changed)
 
         self.meta_tree = pg.DataTreeWidget()
-        self.layout.addWidget(self.meta_tree, 3, 0)
+        self.addWidget(self.meta_tree)
 
         self.set_nwb(nwb)
 
