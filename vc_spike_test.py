@@ -1,7 +1,7 @@
 import numpy as np
 import scipy.ndimage as ndi
 import pyqtgraph as pg
-from neuroanalysis.nwb_viewer import PlotGrid
+from neuroanalysis.ui.plot_grid import PlotGrid
 from neuroanalysis.spike_detection import detect_vc_evoked_spike
 from neuroanalysis.data import Trace
 

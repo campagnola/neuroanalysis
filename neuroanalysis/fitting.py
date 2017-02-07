@@ -141,22 +141,25 @@ class Exp(FitModel):
         FitModel.__init__(self, self.exp, independent_vars=['x'])
 
     @staticmethod
-    def exp(x, xoffset, yoffset, tau, amp):
+    def exp(x, xoffset, yoffset, amp, tau):
         return yoffset + amp * np.exp(-(x - xoffset)/tau)
 
 
 class Exp2(FitModel):
     """Double exponential fitting model.
     
-    Parameters are xoffset, yoffset, amp1, tau1, amp2, and tau2.
+    Parameters are xoffset, yoffset, amp, tau1, and tau2.
+    
+        exp2 = yoffset + amp * (exp(-(x-xoffset) / tau1) - exp(-(x-xoffset) / tau2))
+
     """
     def __init__(self):
         FitModel.__init__(self, self.exp2, independent_vars=['x'])
 
     @staticmethod
-    def exp2(x, xoffset, yoffset, tau1, amp1, tau2, amp2):
+    def exp2(x, xoffset, yoffset, amp, tau1, tau2):
         xoff = x - xoffset
-        return yoffset + amp1 * np.exp(-xoff/tau1) + amp2 * np.exp(-xoff/tau2)
+        return yoffset + amp * (np.exp(-xoff/tau1) - np.exp(-xoff/tau2))
 
 
 class Gaussian(FitModel):

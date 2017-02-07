@@ -7,8 +7,9 @@ import scipy.ndimage as ndi
 from ..event_detection import zero_crossing_events
 
 
-class SpikeDetector(QtCore.QObject):
-    """Analyzer to generate spike metrics from a single calcium indicator trace.
+class EventDetector(QtCore.QObject):
+    """Analyzer to detect transient events from signals such as calcium indicator
+    and current clamp recordings.
     
     The basic algorithm is:
     
