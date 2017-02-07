@@ -3,7 +3,7 @@ import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui, QtCore
 import pyqtgraph.parametertree as pt
 from .cell_selector import CellSelector
-from .event_detection import SpikeDetector
+from .event_detection import EventDetector
 from .triggered_average import TriggeredAverager
 
 
@@ -32,7 +32,7 @@ class STAAnalyzer(QtGui.QWidget):
         self.cell_selector.set_images(max_img, roi_img)
         
         # setup spike detector
-        self.spike_detector = SpikeDetector()
+        self.spike_detector = EventDetector()
 
         # setup averager
         self.averager = TriggeredAverager()

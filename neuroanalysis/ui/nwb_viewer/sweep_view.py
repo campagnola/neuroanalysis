@@ -4,7 +4,7 @@ import pyqtgraph as pg
 import pyqtgraph.reload
 from pyqtgraph.Qt import QtGui, QtCore
 from .plotgrid import PlotGrid
-from ..miesnwb import MiesNwb, SweepGroup
+from ...miesnwb import MiesNwb, SweepGroup
 
 
 class SweepView(QtGui.QWidget):

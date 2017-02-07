@@ -2,7 +2,7 @@ import os, sys
 import acq4
 from acq4.pyqtgraph.Qt import QtCore, QtGui
 import acq4.pyqtgraph.console
-from neuroanalysis.nwb_viewer import MiesNwbViewer
+from neuroanalysis.ui.nwb_viewer import MiesNwbViewer
 from neuroanalysis.miesnwb import MiesNwb
 
 # open a console for debugging
