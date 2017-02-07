@@ -4,7 +4,7 @@ import pyqtgraph.parametertree as pt
 import numpy as np
 import scipy.ndimage as ndi
 
-from ..event_detection import zero_crossing_events
+from ..event_detection import threshold_events
 
 
 class EventDetector(QtCore.QObject):
@@ -32,8 +32,8 @@ class EventDetector(QtCore.QObject):
         QtCore.QObject.__init__(self)
         self.params = pt.Parameter(name='Spike detection', type='group', children=[
             {'name': 'gaussian sigma', 'type': 'float', 'value': 2.0},
-            {'name': 'deconv const', 'type': 'float', 'value': 0.04, 'step': 0.01},
-            {'name': 'threshold', 'type': 'float', 'value': 0.05, 'step': 0.01},
+            {'name': 'deconv const', 'type': 'float', 'value': 0.04, 'suffix': 's', 'siPrefix': True, 'dec': True, 'minStep': 1e-3},
+            {'name': 'threshold', 'type': 'float', 'value': 0.05, 'dec': True, 'minStep': 1e-12},
         ])
         self.sig_plot = None
         self.deconv_plot = None
@@ -100,10 +100,8 @@ class EventDetector(QtCore.QObject):
         # Exponential deconvolution; see Richardson & Silberberg, J. Neurophysiol 2008
         diff = np.diff(filtered) + self.params['deconv const'] * filtered[:-1]
         
-        self.events = zero_crossing_events(diff, min_peak=self.threshold_line.value())
-        self.events = self.events[self.events['sum'] > 0]
-        self.vticks.setXVals(t[self.events['index']])
-        self.vticks.update()
+        self.events = threshold_events(diff, self.threshold_line.value())
+        #self.events = self.events[self.events['sum'] > 0]
 
         if show:
             if self.sig_plot is not None:

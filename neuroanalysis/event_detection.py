@@ -103,7 +103,7 @@ def threshold_events(data, threshold, adjust_times=True, baseline=0.0):
     """Finds regions in a trace that cross a threshold value (as measured by distance from baseline). Returns the index, time, length, peak, and sum of each event.
     Optionally adjusts times to an extrapolated baseline-crossing."""
     threshold = abs(threshold)
-    data1 = data.view(ndarray)
+    data1 = data.view(np.ndarray)
     data1 = data1 - baseline
     #if (hasattr(data, 'implements') and data.implements('MetaArray')):
     try:

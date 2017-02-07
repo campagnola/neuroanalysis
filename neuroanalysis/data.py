@@ -15,6 +15,8 @@ systems.
 This abstraction layer also helps to enforce good coding practice by separating data representation,
 analysis, and visualization.
 """
+import numpy as np
+
 
 class Experiment(object):
     """A generic container for RecordingSequence and SyncRecording instances that
@@ -288,6 +290,7 @@ class Trace(object):
             if self._dt is None:
                 raise TypeError("No time values or sample rate were specified for this Trace.")
             self._time_values = np.arange(len(self._data)) * self.dt
+        return self._time_values
 
     @property
     def shape(self):
