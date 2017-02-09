@@ -9,14 +9,21 @@ from neuroanalysis.ui.plot_grid import PlotGrid
 pg.mkQApp()
 
 data = np.load("test_data/synaptic_events/events1.npz")
-traces = [Trace(data['trace_%02d'%i], dt=1.0/data['sample_rates'][i]) for i in range(13)]
+trace_names = sorted([x for x in data.keys() if x.startswith('trace')])
+traces = {n:Trace(data[n], dt=1.0/data['sample_rates'][i]) for i,n in enumerate(trace_names)}
 
 evd = EventDetector()
-evd.params['threshold'] = 2e-11
+evd.params['threshold'] = 5e-10
 
 hs = QtGui.QSplitter(QtCore.Qt.Horizontal)
-pt = pg.parametertree.ParameterTree()
-pt.setParameters(evd.params)
+pt = pg.parametertree.ParameterTree(showHeader=False)
+
+params = pg.parametertree.Parameter.create(name='params', type='group', children=[
+    dict(name='data', type='list', values=trace_names),
+    evd.params,
+])
+
+pt.setParameters(params, showTop=False)
 hs.addWidget(pt)
 
 plots = PlotGrid()
@@ -26,10 +33,14 @@ hs.addWidget(plots)
 
 evd.set_plots(plots[0,0], plots[1,0])
 
-def update():
-    evd.process(traces[0].time_values, traces[0].data)
+def update(auto_range=False):
+    evd.process(traces[params['data']])
+    if auto_range:
+        plots[0,0].autoRange()
 
 evd.parameters_changed.connect(update)
-update()
+params.child('data').sigValueChanged.connect(lambda: update(auto_range=True))
+
+update(auto_range=True)
 
 hs.show()

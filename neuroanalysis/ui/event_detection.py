@@ -4,7 +4,7 @@ import pyqtgraph.parametertree as pt
 import numpy as np
 import scipy.ndimage as ndi
 
-from ..event_detection import threshold_events
+from ..event_detection import threshold_events, exp_deconvolve
 
 
 class EventDetector(QtCore.QObject):
@@ -31,8 +31,8 @@ class EventDetector(QtCore.QObject):
     def __init__(self):
         QtCore.QObject.__init__(self)
         self.params = pt.Parameter(name='Spike detection', type='group', children=[
-            {'name': 'gaussian sigma', 'type': 'float', 'value': 2.0},
-            {'name': 'deconv const', 'type': 'float', 'value': 0.04, 'suffix': 's', 'siPrefix': True, 'dec': True, 'minStep': 1e-3},
+            {'name': 'gaussian sigma', 'type': 'float', 'value': 200e-6, 'bounds': [0, None], 'suffix': 's', 'siPrefix': True, 'dec': True, 'minStep': 10e-6},
+            {'name': 'deconv const', 'type': 'float', 'value': 0.01, 'suffix': 's', 'siPrefix': True, 'dec': True, 'minStep': 1e-4},
             {'name': 'threshold', 'type': 'float', 'value': 0.05, 'dec': True, 'minStep': 1e-12},
         ])
         self.sig_plot = None
@@ -71,14 +71,12 @@ class EventDetector(QtCore.QObject):
             plt2.addItem(self.deconv_trace)
             plt2.addItem(self.threshold_line)
         
-    def process(self, t, y, show=True):
+    def process(self, trace, show=True):
         """Return a table (numpy record array) of events detected in a time series.
         
         Parameters
         ----------
-        t : ndarray
-            Time values corresponding to sample data.
-        y : ndarray
+        trace : data.Trace instance
             Signal values to process for events (for example, a single calcium
             signal trace or a single electrode recording).
         show : bool
@@ -95,15 +93,21 @@ class EventDetector(QtCore.QObject):
             * sum: the integral of *data* under the deconvolved event curve
             * peak: the peak value of the deconvolved event
         """
-        filtered = ndi.gaussian_filter(y, self.params['gaussian sigma'])
+        y = trace.data
+        dt = trace.dt
+        filtered = ndi.gaussian_filter(y, self.params['gaussian sigma'] / dt)
+        
+        filtered -= np.median(filtered)
         
         # Exponential deconvolution; see Richardson & Silberberg, J. Neurophysiol 2008
-        diff = np.diff(filtered) + self.params['deconv const'] * filtered[:-1]
+        tau = self.params['deconv const'] / dt
+        diff = exp_deconvolve(filtered, tau)
         
         self.events = threshold_events(diff, self.threshold_line.value())
         #self.events = self.events[self.events['sum'] > 0]
 
         if show:
+            t = trace.time_values
             if self.sig_plot is not None:
                 self.sig_trace.setData(t[:len(filtered)], filtered)
                 self.vticks.setXVals(t[self.events['index']])
