@@ -38,7 +38,7 @@ def update(auto_range=False):
     if auto_range:
         plots[0,0].autoRange()
 
-evd.parameters_changed.connect(update)
+evd.parameters_changed.connect(lambda: update(auto_range=False))
 params.child('data').sigValueChanged.connect(lambda: update(auto_range=True))
 
 update(auto_range=True)

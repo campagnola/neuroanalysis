@@ -278,6 +278,10 @@ class Trace(object):
 
     @property
     def dt(self):
+        if self._dt is None:
+            # assume regular sampling
+            t = self.time_values
+            self._dt = t[1] - t[0]
         return self._dt
     
     @property
@@ -299,6 +303,14 @@ class Trace(object):
     @property
     def ndim(self):
         return self._data.ndim
+
+    def copy(self, data=None):
+        if data is None:
+            data = self.data.copy()
+        tval = self._time_values
+        if tval is not None:
+            tval = tval.copy()
+        return Trace(data, dt=self._dt, start_time=self._start_time, time_values=tval, units=self._units)
     
 
 # TODO: this class should not be a subclass of PatchClampRecording

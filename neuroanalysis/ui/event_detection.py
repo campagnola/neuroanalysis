@@ -5,6 +5,7 @@ import numpy as np
 import scipy.ndimage as ndi
 
 from ..event_detection import threshold_events, exp_deconvolve
+from ..baseline import float_mode
 
 
 class EventDetector(QtCore.QObject):
@@ -95,13 +96,14 @@ class EventDetector(QtCore.QObject):
         """
         y = trace.data
         dt = trace.dt
-        filtered = ndi.gaussian_filter(y, self.params['gaussian sigma'] / dt)
         
-        filtered -= np.median(filtered)
         
         # Exponential deconvolution; see Richardson & Silberberg, J. Neurophysiol 2008
         tau = self.params['deconv const'] / dt
-        diff = exp_deconvolve(filtered, tau)
+        diff = exp_deconvolve(y, tau)
+        
+        diff = ndi.gaussian_filter(diff, self.params['gaussian sigma'] / dt)
+        diff -= float_mode(diff, bins=200)
         
         self.events = threshold_events(diff, self.threshold_line.value())
         #self.events = self.events[self.events['sum'] > 0]
@@ -109,7 +111,7 @@ class EventDetector(QtCore.QObject):
         if show:
             t = trace.time_values
             if self.sig_plot is not None:
-                self.sig_trace.setData(t[:len(filtered)], filtered)
+                self.sig_trace.setData(t, y)
                 self.vticks.setXVals(t[self.events['index']])
                 self.vticks.update()  # this should not be needed..
             if self.deconv_plot is not None:

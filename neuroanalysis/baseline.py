@@ -27,7 +27,7 @@ def adaptive_detrend(data, x=None, threshold=3.0):
     return d4
     
 
-def float_mode(data, dx=None):
+def float_mode(data, bins=None):
     """Returns the most common value from a floating-point array by binning
     values together.
     """

@@ -38,13 +38,12 @@ class MultipatchMatrixView(QtGui.QWidget):
     def data_selected(self, sweeps, channels):
         self.sweeps = sweeps
         self.channels = channels
-        self._update_plots()
-        self._update_plots(autoRange=True)
+        self._update_plots(auto_range=True)
 
     def _params_changed(self, *args):
         self._update_plots()
 
-    def _update_plots(self, autoRange=False):
+    def _update_plots(self, auto_range=False):
         sweeps = self.sweeps
         chans = self.channels
         self.plots.clear()
@@ -197,10 +196,44 @@ class MultipatchMatrixView(QtGui.QWidget):
                 if j == 0:
                     plt.setLabels(left=('CH%d'%sweeps[0].traces()[chans[i]].headstage_id, 'A' if modes[i] == 0 else 'V'))
 
-        if autoRange:
+        if auto_range:
             r = 14e-12 if modes[i] == 0 else 5e-3
             self.plots[0, 1].setYRange(-r, r)
             r = 2e-9 if modes[i] == 0 else 100e-3
             self.plots[0, 0].setYRange(-r, r)
 
             self.plots[0, 0].setXRange(t[0], t[-1])
+
+
+class PairAnalyzer(QtGui.QWidget):
+    def __init__(self):
+        self._sweeps = []
+        self._channels = [None, None]
+        
+        self.layout = QtGui.QGridLayout()
+        self.setLayout(self.layout)
+        
+        self.vsplit = QtGui.QSplitter(QtCore.Qt.Vertical)
+        self.layout.addWidget(self.vsplit, 0, 0)
+        
+        self.pre_plot = pg.PlotWidget()
+        self.post_plot = pg.PlotWidget()
+        self.vsplit.addWidget(self.pre_plot)
+        self.vsplit.addWidget(self.post_plot)
+    
+    def set_channels(self, pre=None, post=None):
+        if pre is not None:
+            self._channels[0] = pre
+            
+        if post is not None:
+            self._channels[1] = post
+            
+        self._update_analysis()
+
+    def data_selected(self, sweeps, channels):
+        self._sweeps = sweeps
+        
+    def _update_analysis(self):
+        
+        
+        
