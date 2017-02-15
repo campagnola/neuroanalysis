@@ -65,6 +65,9 @@ reload_shortcut.activated.connect(reload_all)
 
 # load file or set base directory from argv
 for arg in sys.argv[1:]:
+    if not os.path.exists(arg):
+        print "Could not find %s" % arg
+        sys.exit(-1)
     if os.path.isdir(arg):
         m.setBaseDir(arg)
     elif os.path.isfile(arg):

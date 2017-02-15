@@ -2,7 +2,7 @@ import numpy as np
 from scipy.ndimage import gaussian_filter
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui, QtCore
-from .plotgrid import PlotGrid
+from ..plot_grid import PlotGrid
 from ...miesnwb import MiesNwb, SweepGroup
 
 
@@ -15,6 +15,9 @@ class MultipatchMatrixView(QtGui.QWidget):
 
         self.plots = PlotGrid(parent=self)
         self.layout.addWidget(self.plots, 0, 0)
+        self.plots.scene().sigMouseClicked.connect(self._plot_clicked)
+
+        #self.pair_view = PairAnalyzer()
 
         self.params = pg.parametertree.Parameter(name='params', type='group', children=[
             {'name': 'show', 'type': 'list', 'values': ['sweep avg', 'sweep avg + sweeps', 'sweeps', 'pulse avg']},
@@ -42,6 +45,14 @@ class MultipatchMatrixView(QtGui.QWidget):
 
     def _params_changed(self, *args):
         self._update_plots()
+
+    def _plot_clicked(self, ev):
+        item = self.plots.scene().itemAt(ev.scenePos())
+        r,c = self.plots.item_index(item)
+        for i in range(self.plots.rows):
+            for j in range(self.plots.cols):
+                color = None if (i, j) != (r, c) else pg.mkColor(30, 30, 50)
+                self.plots[i,j].vb.setBackgroundColor(color)
 
     def _update_plots(self, auto_range=False):
         sweeps = self.sweeps
@@ -205,35 +216,48 @@ class MultipatchMatrixView(QtGui.QWidget):
             self.plots[0, 0].setXRange(t[0], t[-1])
 
 
-class PairAnalyzer(QtGui.QWidget):
-    def __init__(self):
-        self._sweeps = []
-        self._channels = [None, None]
+#class PairAnalyzer(QtGui.QWidget):
+    #def __init__(self):
+        #QtGui.QWidget.__init__(self)
+        #self._sweeps = []
+        #self._channels = [None, None]
         
-        self.layout = QtGui.QGridLayout()
-        self.setLayout(self.layout)
+        #self.layout = QtGui.QGridLayout()
+        #self.setLayout(self.layout)
         
-        self.vsplit = QtGui.QSplitter(QtCore.Qt.Vertical)
-        self.layout.addWidget(self.vsplit, 0, 0)
+        #self.vsplit = QtGui.QSplitter(QtCore.Qt.Vertical)
+        #self.layout.addWidget(self.vsplit, 0, 0)
         
-        self.pre_plot = pg.PlotWidget()
-        self.post_plot = pg.PlotWidget()
-        self.vsplit.addWidget(self.pre_plot)
-        self.vsplit.addWidget(self.post_plot)
+        #self.pre_plot = pg.PlotWidget()
+        #self.post_plot = pg.PlotWidget()
+        #self.vsplit.addWidget(self.pre_plot)
+        #self.vsplit.addWidget(self.post_plot)
     
-    def set_channels(self, pre=None, post=None):
-        if pre is not None:
-            self._channels[0] = pre
+    #def set_channels(self, pre=None, post=None):
+        #if pre is not None:
+            #self._channels[0] = pre
             
-        if post is not None:
-            self._channels[1] = post
+        #if post is not None:
+            #self._channels[1] = post
             
-        self._update_analysis()
+        #self._update_analysis()
 
-    def data_selected(self, sweeps, channels):
-        self._sweeps = sweeps
+    #def data_selected(self, sweeps, channels):
+        #self._sweeps = sweeps
+        #self._update_analysis()
         
-    def _update_analysis(self):
+    #def _update_analysis(self):
+        #self.pre_plot.clear()
+        #self.post_plot.clear()
         
+        #if len(self.sweeps) == 0 or None in self._channels:
+            #return
+        
+        #pre_chan, post_chan = self._channels
+        
+        #for sweep in self.sweeps:
+            
+            #pre_trace = sweep.traces()[pre_chan]
+            
         
         

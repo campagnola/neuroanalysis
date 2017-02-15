@@ -1,6 +1,6 @@
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui, QtCore
-from .plotgrid import PlotGrid
+from ..plot_grid import PlotGrid
 
 
 class AnalyzerView(QtGui.QWidget):

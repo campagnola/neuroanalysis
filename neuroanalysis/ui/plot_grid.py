@@ -52,6 +52,23 @@ class PlotGrid(QtGui.QWidget):
             for plt in row:
                 getattr(plt, m)(*args, **kwds)
 
+    def scene(self):
+        return self.grid.scene()
+
+    def item_index(self, item):
+        """Return the (row, col) that contains this item.
+        """
+        plts = {}
+        for i,row in enumerate(self.plots):
+            for j,p in enumerate(row):
+                plts[p] = (i, j)
+        while True:
+            if item in plts:
+                return plts[item]
+            item = item.parentItem()
+            if item is None:
+                return None
+
     # wrap a few methods from PlotItem:
     def clear(self):
         self._call_on_plots('clear')

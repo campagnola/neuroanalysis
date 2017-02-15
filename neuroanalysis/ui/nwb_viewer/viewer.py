@@ -5,6 +5,7 @@ from neuroanalysis.miesnwb import MiesNwb, SweepGroup
 from .sweep_view import SweepView
 from .multipatch_view import MultipatchMatrixView
 from .analyzer_view import AnalyzerView
+from .pair_view import PairView
 
 
 class MiesNwbExplorer(QtGui.QSplitter):
@@ -237,7 +238,7 @@ class MiesNwbViewer(QtGui.QWidget):
         views.
         """
         self.clear_views()
-        pg.reload.reloadAll(verbose=True)
+        pg.reload.reloadAll(debug=True)
         self.create_views()
 
     def clear_views(self):
@@ -250,6 +251,7 @@ class MiesNwbViewer(QtGui.QWidget):
             ('Sweep', SweepView(self)),
             ('Matrix', MultipatchMatrixView(self)),
             ('Sandbox', AnalyzerView(self)),
+            ('Pair', PairView(self)),
         ]
 
         for name, view in self.views:
