@@ -1,8 +1,10 @@
+import numpy as np
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui, QtCore
 from ..plot_grid import PlotGrid
 from ..filter import SignalFilter
 from ...data import Trace
+from ...spike_detection import detect_evoked_spike
 
 
 class PairView(QtGui.QWidget):
@@ -61,13 +63,34 @@ class PairView(QtGui.QWidget):
             return
         
         # Iterate over selected channels of all sweeps, plotting traces one at a time
-        for sweep in sweeps:
+        for i,sweep in enumerate(sweeps):
             pre_trace = sweep.traces()[pre]
             post_trace = sweep.traces()[post]
+            
+            color = pg.mkColor((i, len(sweeps)*1.3))
             
             for trace, plot in [(pre_trace, self.pre_plot), (post_trace, self.post_plot)]:
                 dt = trace.sample_rate / 1000.
                 t = Trace(trace.data()[:,0], dt=dt)
                 f = self.filter.process(t)
-                plot.plot(f.time_values, f.data)
+                plot.plot(f.time_values, f.data, pen=color)
                 plot.setLabels(left="Channel %d" % trace.headstage_id, bottom=("Time", 's'))
+
+            # Detect pulse times
+            stim = pre_trace.data()[:,1]
+            sdiff = np.diff(stim)
+            on_times = np.argwhere(sdiff > 0)[:, 1:]  # 1: skips test pulse
+            off_times = np.argwhere(sdiff < 0)[:, 1:]
+
+            # detect spike times
+            spike_inds = []
+            for on, off in zip(on_times, off_times):
+                spike = detect_evoked_spike(trace, [on, off])
+                if spike is None:
+                    spike_inds.append(None)
+                else:
+                    spike_inds.append(spike['rise_ind'])
+                    
+            vticks = pg.VTickGroup([x for x in spike_inds if x is not None], pen=color)
+            self.pre_plot.addItem(vticks)
+

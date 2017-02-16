@@ -25,6 +25,27 @@ def detect_evoked_spike(data, pulse_edges, **kwds):
         raise ValueError("Unsupported clamp mode %s" % trace.clamp_mode)
 
 
+def detect_ic_evoked_spike(trace, pulse_edges, threshold=-10e-3, duration=3e-3):
+    assert trace.data.ndim == 1
+    
+    dt = trace.dt
+    w = int(duration / dt)
+    pstart, pstop = pulse_edges
+    chunk = trace.data[pstart:pstart+w]
+    
+    peak_ind = np.argmax(chunk)
+    peak_val = chunk[peak_ind]
+    if peak_val < threshold:
+        return None
+    
+    dvdt = np.diff(chunk[:peak_ind])
+    rise_ind = np.argmax(dvdt)
+    max_dvdt = dvdt[rise_ind]
+    
+    return {'peak_index': peak_ind + pstart, 'rise_index': rise_ind + pstart,
+            'peak_val': peak_val, 'max_dvdt': max_dvdt}
+
+
 def detect_vc_evoked_spike(trace, pulse_edges, sigma=20e-6, delay=150e-6, threshold=50e-12):
     """Return a dict describing an evoked spike in a patch clamp recording, or None if no spike is detected.
 
@@ -97,8 +118,3 @@ def detect_vc_evoked_spike(trace, pulse_edges, sigma=20e-6, delay=150e-6, thresh
                 'peak_diff': peak_diff, 'max_dvdt': max_dvdt}
     else:
         return None
-
-
-
-def _detect_evoked_spike_ic(trace, pulse_start, pulse_stop, pulse_amp, search_duration):
-    raise NotImplementedError()
