@@ -3,6 +3,7 @@ from datetime import datetime
 from collections import OrderedDict
 import numpy as np
 import h5py
+from .data import Recording, Trace
 
 
 class MiesNwb(object):
@@ -164,48 +165,87 @@ class MiesNwb(object):
         return datetime.utcfromtimestamp(timestamp) - dt
 
 
-class Trace(object):
+class MiesTrace(Trace):
+    def __init__(self, recording, chan):
+        Trace.__init__(self)
+        self._recording = recording
+        self._chan = chan
+        self._data = None
+        
+    @property
+    def start_time(self):
+        pass
+        
+    @property
+    def sample_rate(self):
+        return self.recording._get_sample_rate()
+
+    @property
+    def data(self):
+        if self._data is None:
+            rec = self.recording
+            if self._chan == 'primary':
+                scale = 1e-12 if rec.clamp_mode == 'vc' else 1e-3
+                self._data = np.array(rec.primary_hdf) * scale
+            elif self._chan == 'command':
+                scale = 1e-3 if rec.clamp_mode == 'vc' else 1e-12
+                self._data = np.array(rec.command_hdf) * scale
+        return self._data
+    
+    
+    
+class MiesRecording(PatchClampRecording):
     """A single stimulus / recording made on a single channel.
     """
     def __init__(self, sweep, sweep_id, ad_chan):
-        self.sweep = sweep
-        self.nwb = sweep.nwb
-        self.trace_id = (sweep_id, ad_chan)
-        self.hdf_group = self.nwb.hdf['acquisition/timeseries/data_%05d_AD%d' % self.trace_id]
-        self.headstage_id = int(self.hdf_group['electrode_name'].value[0].split('_')[1])
+        self._sweep = sweep
+        self._nwb = sweep.nwb
+        self._trace_id = (sweep_id, ad_chan)
+        self._hdf_group = self.nwb.hdf['acquisition/timeseries/data_%05d_AD%d' % self.trace_id]
+        self._headstage_id = int(self.hdf_group['electrode_name'].value[0].split('_')[1])
         self._meta = None
         self._da_chan = None
         self._data = None
+        
+        chans = {'primary': MiesTrace(self, 'primary'), 'command': MiesTrace(self, 'command')}
+        props = {'device_type': 'MultiClamp 700'}
+        PatchClampRecording.__init__(self, channels=chans, properties=props)
+    
+    @property
+    def clamp_mode(self):
+        return 'vc' if self.meta()['Clamp Mode'] == 0 else 'ic'
 
-    def data(self):
-        """Return an array of shape (N, 2) containing the recording and stimulus
-        for this trace.
-
-        The first column [:, 0] contains recorded data and the second column [:, 1]
-        contains the stimulus.
-        """
-        if self._data is None:
-            # scale data based on clamp mode
-            scales = (1e-12, 1e-3) if self.meta()['Clamp Mode'] == 0 else (1e-3, 1e-12)
-            self._data = np.vstack([np.array(self.recording()) * scales[0], np.array(self.stim()) * scales[1]]).T
-        return self._data
-
-    def __len__(self):
-        return len(self.recording())
-
-    def recording(self):
-        """Return the raw recorded data for this trace.
+    @property
+    def holding_potential(self):
+        return self.meta()['V-Clamp Holding Level']
+    
+    @property
+    def holding_current(self):
+        return self.meta()['I-Clamp Holding Level']
+    
+    @property
+    def primary_hdf(self):
+        """The raw HDF5 data containing the primary channel recording
         """
         return self.hdf_group['data']        
 
     @property
-    def sample_rate(self):
+    def command_hdf(self):
+        """The raw HDF5 data containing the stimulus command 
+        """
+        return self.nwb.hdf['stimulus/presentation/data_%05d_DA%d/data' % (self.trace_id[0], self.da_chan())]
+
+    def _get_stim_data(self):
+        scale = 1e-3 if self.clamp_mode == 'vc' else 1e-12
+        return np.array(self.command_hdf) * scale
+
+    def _get_sample_rate(self):
         # Note: this is also available in meta()['Minimum Sampling interval'],
         # but that key is missing in some older NWB files.
         return self.recording().attrs['IGORWaveScaling'][1,0] 
         
     def da_chan(self):
-        """Return the DA channel ID for this trace.
+        """Return the DA channel ID for this recording.
         """
         if self._da_chan is None:
             hdf = self.nwb.hdf['stimulus/presentation']
@@ -218,13 +258,8 @@ class Trace(object):
                 raise Exception("Cannot find DA channel for headstage %d" % self.headstage_id)
         return self._da_chan
 
-    def stim(self):
-        """Return the raw stimulus array for this trace.
-        """
-        return self.nwb.hdf['stimulus/presentation/data_%05d_DA%d/data' % (self.trace_id[0], self.da_chan())]
-
     def meta(self):
-        """Return a dict of metadata for this trace.
+        """Return a dict of metadata for this recording.
 
         Keys include 'stim_name', 'start_time', and all parameters recorded in the lab notebook.
         """
@@ -238,14 +273,13 @@ class Trace(object):
         return self._meta
 
     def __repr__(self):
-        meta = self.meta()
-        mode = meta['Clamp Mode']
-        if mode == 0:  # VC
-            extra = "mode=VC holding=%d" % int(np.round(meta['V-Clamp Holding Level']))
-        elif mode == 1:  # IC
-            extra = "mode=IC holding=%d" % int(np.round(meta['I-Clamp Holding Level']))
+        mode = self.clamp_mode
+        if mode == 'vc':
+            extra = "mode=VC holding=%d" % int(np.round(self.holding_potential))
+        elif mode == 'ic':
+            extra = "mode=IC holding=%d" % int(np.round(self.holding_current))
 
-        return "<Trace %d.%d  stim=%s %s>" % (self.trace_id[0], self.headstage_id, meta['stim_name'], extra)
+        return "<%s %d.%d  stim=%s %s>" % (self.__class__.__name__, self.trace_id[0], self.headstage_id, meta['stim_name'], extra)
 
 
 class Sweep(object):

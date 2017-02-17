@@ -16,6 +16,8 @@ This abstraction layer also helps to enforce good coding practice by separating 
 analysis, and visualization.
 """
 import numpy as np
+from . import util
+from collections import OrderedDict
 
 
 class Experiment(object):
@@ -169,12 +171,11 @@ class Recording(object):
     Each channel is described by a single Trace instance. Channels are often 
     recorded with the same timebase, but this is not strictly required.
     """
-    def __init__(self, channels, **kwds):
-        self._properties = {
-            'device_type': kwds.pop('device_type', None),
-        }
-        if len(kwds) > 0:
-            raise TypeError("Invalid keyword arguments: %s" % list(kwds.keys()))
+    def __init__(self, channels, start_time=None, device_type=None, sync_recording=None, device_name=None):
+        self._meta = OrderedDict()
+        self._meta['start_time'] = start_time
+        self._meta['device_type'] = device_type
+        self._meta['device_name'] = device_name
         
         channels = OrderedDict(channels)
         for k,v in channels.items():
@@ -187,7 +188,7 @@ class Recording(object):
 
         Strings should be described in the global ``device_tree``.        
         """
-        return self._properties['device_type']
+        return self._meta['device_type']
 
     @property
     def channels(self):
@@ -199,6 +200,7 @@ class Recording(object):
     def start_time(self):
         """The starting time (unix epoch) of this recording.
         """
+        return self._meta['start_time']
 
     def __getitem__(self, chan):
         return self._channels[chan]
@@ -212,31 +214,51 @@ class PatchClampRecording(Recording):
     * May include stimulus waveform
     * Metadata about amplifier state (filtering, gain, bridge balance, compensation, etc)
     """
+    def __init__(self, *args, **kwds):
+        meta = OrderedDict()
+        for k in ['clamp_mode', 'patch_mode', 'holding_potential', 'holding_current']:
+            meta[k] = kwds.pop(k, None)
+        Recording.__init__(*args, **kwds)
+        self._meta.update(meta)
+        
     @property
     def clamp_mode(self):
         """The mode of the patch clamp amplifier: 'vc', 'ic', or 'i0'.
         """
+        return self._meta['clamp_mode']
 
     @property
     def patch_mode(self):
         """The state of the membrane patch. E.g. 'whole cell', 'cell attached', 'loose seal', 'bath', 'inside out', 'outside out'
         """
+        return self._meta['patch_mode']
 
     @property
     def holding_potential(self):
         """The holding potential if the recording is voltage-clamp, or the
         resting membrane potential if the recording is current-clamp.
         """
+        return self._meta['holding_potential']
 
     @property
     def holding_current(self):
         """The steady-state pipette current applied during this recording.
         """
+        return self._meta['holding_current']
 
     @property
     def nearest_test_pulse(self):
         """The test pulse that was acquired nearest to this recording.
         """
+
+    def __repr__(self):
+        mode = self.clamp_mode
+        if mode == 'vc':
+            extra = "mode=VC holding=%d" % int(np.round(self.holding_potential))
+        elif mode == 'ic':
+            extra = "mode=IC holding=%d" % int(np.round(self.holding_current))
+
+        return "<%s %s>" % (self.__class__.__name__, extra)
 
 
 class Trace(object):
@@ -255,12 +277,14 @@ class Trace(object):
     Traces may specify units, a starting time, and either a sample period or an
     array of time values.
     """
-    def __init__(self, data, dt=None, start_time=None, time_values=None, units=None):
+    def __init__(self, data, dt=None, start_time=None, time_values=None, units=None, recording=None):
         self._data = data
-        self._start_time = start_time
-        self._dt = dt
+        self._meta = OrderedDict()
+        self._meta['start_time'] = start_time
+        self._meta['dt'] = dt
+        self._meta['units'] = units
         self._time_values = time_values
-        self._units = units
+        self._recording = util.weakref(recording)
         
     @property
     def data(self):
@@ -268,13 +292,13 @@ class Trace(object):
         
     @property
     def start_time(self):
-        return self._start_time
+        return self._meta['start_time']
     
     @property
     def sample_rate(self):
-        if self._dt is None:
+        if self._meta['dt'] is None:
             raise TypeError("Trace sample rate was not specified.")
-        return 1.0 / self._dt
+        return 1.0 / self._meta['dt']
 
     @property
     def dt(self):
@@ -286,7 +310,7 @@ class Trace(object):
     
     @property
     def units(self):
-        return self._units
+        return self._meta['units']
 
     @property
     def time_values(self):
@@ -303,6 +327,10 @@ class Trace(object):
     @property
     def ndim(self):
         return self._data.ndim
+    
+    @property
+    def recording(self):
+        return self._recording()
 
     def copy(self, data=None):
         if data is None:
