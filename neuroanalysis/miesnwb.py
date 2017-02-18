@@ -206,7 +206,10 @@ class MiesRecording(PatchClampRecording):
         self._da_chan = None
         self._data = None
         
-        chans = {'primary': MiesTrace(self, 'primary'), 'command': MiesTrace(self, 'command')}
+        chans = OrderedDict([
+            ('primary', MiesTrace(self, 'primary')), 
+            ('command', MiesTrace(self, 'command'))
+        ])
         props = {'device_type': 'MultiClamp 700'}
         PatchClampRecording.__init__(self, channels=chans, **props)
 
