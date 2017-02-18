@@ -117,8 +117,8 @@ class SyncRecording(object):
     This is typically the result of recording from multiple devices at the same time
     (for example, two patch-clamp amplifiers and a camera).
     """
-    def __init__(self, devices=None):
-        self._devices = devices if devices is not None else OrderedDict()
+    def __init__(self, recordings=None):
+        self._recordings = recordings if recordings is not None else OrderedDict()
         self._meta = OrderedDict()
 
     @property
@@ -131,22 +131,26 @@ class SyncRecording(object):
     def devices(self):
         """A list of the names of devices in this recording.
         """
-        return self._devices.keys()
+        return self._recordings.keys()
 
     def __getitem__(self, item):
         """Return a recording given its device name.
         """
-        return self._devices[item]
+        return self._recordings[item]
 
     @property
     def recordings(self):
         """A list of the recordings in this recording.
         """
+        return self._recordings.values()
 
     @property
     def meta(self):
         """A dictionary describing arbitrary metadata for this recording.
         """
+
+    def data(self):
+        return np.concatenate([self[dev].data()[None, :] for dev in self.devices], axis=0)
 
 
 class MultipatchProbe(SyncRecording):
@@ -206,6 +210,9 @@ class Recording(object):
 
     def __getitem__(self, chan):
         return self._channels[chan]
+
+    def data(self):
+        return np.concatenate([self[ch].data[:,None] for ch in self.channels], axis=1)
 
 
 class PatchClampRecording(Recording):

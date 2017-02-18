@@ -1,6 +1,6 @@
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui, QtCore
-from neuroanalysis.miesnwb import MiesNwb, SweepGroup
+from neuroanalysis.miesnwb import MiesNwb
 
 from .sweep_view import SweepView
 from .multipatch_view import MultipatchMatrixView
@@ -57,24 +57,29 @@ class MiesNwbExplorer(QtGui.QSplitter):
         if self._nwb is None:
             return
 
-        for group in self._nwb.sweep_groups():
-            meta = [group.sweeps[0].traces()[ch].meta() for ch in group.sweeps[0].channels()]
+        for sweep in self._nwb.sweeps():
+            item = QtGui.QTreeWidgetItem([str(sweep.sweep_id)])
+            item.data = sweep
+            self.sweep_tree.addTopLevelItem(item)
+            
+        #for group in self._nwb.sweep_groups():
+            #meta = [group.sweeps[0].traces()[ch].meta() for ch in group.sweeps[0].channels()]
 
-            mode = []
-            holding = []
-            for m in meta:
-                mode.append('V' if m.get('Clamp Mode', '') == 0 else 'I')
-                holding.append(m.get('%s-Clamp Holding Level'%mode[-1], ''))
-            holding = ' '.join(['%0.1f'%h if h is not None else '__._' for h in holding])
-            mode = ' '.join(mode)
+            #mode = []
+            #holding = []
+            #for m in meta:
+                #mode.append('V' if m.get('Clamp Mode', '') == 0 else 'I')
+                #holding.append(m.get('%s-Clamp Holding Level'%mode[-1], ''))
+            #holding = ' '.join(['%0.1f'%h if h is not None else '__._' for h in holding])
+            #mode = ' '.join(mode)
 
-            gitem = QtGui.QTreeWidgetItem([meta[0]['stim_name'], str(mode), str(holding)])
-            gitem.data = group
-            self.sweep_tree.addTopLevelItem(gitem)
-            for sweep in group.sweeps:
-                item = QtGui.QTreeWidgetItem([str(sweep.sweep_id)])
-                item.data = sweep
-                gitem.addChild(item)
+            #gitem = QtGui.QTreeWidgetItem([meta[0]['stim_name'], str(mode), str(holding)])
+            #gitem.data = group
+            #self.sweep_tree.addTopLevelItem(gitem)
+            #for sweep in group.sweeps:
+                #item = QtGui.QTreeWidgetItem([str(sweep.sweep_id)])
+                #item.data = sweep
+                #gitem.addChild(item)
 
         self.sweep_tree.header().resizeSections(QtGui.QHeaderView.ResizeToContents)
 
@@ -112,17 +117,17 @@ class MiesNwbExplorer(QtGui.QSplitter):
             # get a list of all channels across all selected items
             channels = []
             for item in sel:
-                if isinstance(item, SweepGroup):
-                    if len(item.sweeps) == 0:
-                        continue
-                    item = item.sweeps[0]
-                channels.extend([(ch, item.traces()[ch].headstage_id) for ch in item.channels()])
+                #if isinstance(item, SweepGroup):
+                    #if len(item.sweeps) == 0:
+                        #continue
+                    #item = item.sweeps[0]
+                channels.extend(item.devices)
             channels = list(set(channels))
             channels.sort()
             
             # add new items to the channel list, all selected
-            for ch,chid in channels:
-                item = QtGui.QListWidgetItem(str(chid))
+            for ch in channels:
+                item = QtGui.QListWidgetItem(str(ch))
                 item.channel_index = ch
                 self._channel_selection.setdefault(ch, True)
                 # restore previous check state, if any.
@@ -135,10 +140,10 @@ class MiesNwbExplorer(QtGui.QSplitter):
     def _selection_changed(self):
         sel = self.selection()
         if len(sel) == 1:
-            if isinstance(sel[0], SweepGroup):
-                self.meta_tree.setData(sel[0].meta())
-            else:
-                self.meta_tree.setData(sel[0].meta(all_chans=True))
+            #if isinstance(sel[0], SweepGroup):
+                #self.meta_tree.setData(sel[0].meta())
+            #else:
+            self.meta_tree.setData(sel[0].meta(all_chans=True))
         else:
             self.meta_tree.clear()
         self._update_channel_list()
@@ -224,10 +229,10 @@ class MiesNwbViewer(QtGui.QWidget):
             selection = self.explorer.selection()
         sweeps = []
         for item in selection:
-            if isinstance(item, SweepGroup):
-                sweeps.extend(item.sweeps)
-            else:
-                sweeps.append(item)
+            #if isinstance(item, SweepGroup):
+                #sweeps.extend(item.sweeps)
+            #else:
+            sweeps.append(item)
         return sweeps
     
     def selected_channels(self):

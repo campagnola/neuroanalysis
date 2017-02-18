@@ -198,7 +198,7 @@ class MiesRecording(PatchClampRecording):
     """
     def __init__(self, sweep, sweep_id, ad_chan):
         self._sweep = sweep
-        self._nwb = sweep.nwb
+        self._nwb = sweep._nwb
         self._trace_id = (sweep_id, ad_chan)
         self._hdf_group = self._nwb.hdf['acquisition/timeseries/data_%05d_AD%d' % self._trace_id]
         self._headstage_id = int(self._hdf_group['electrode_name'].value[0].split('_')[1])
@@ -209,10 +209,18 @@ class MiesRecording(PatchClampRecording):
         chans = {'primary': MiesTrace(self, 'primary'), 'command': MiesTrace(self, 'command')}
         props = {'device_type': 'MultiClamp 700'}
         PatchClampRecording.__init__(self, channels=chans, **props)
+
+        # update metadata
+        self._meta['stim_name'] = self._hdf_group['stimulus_description'].value[0]
+        self._meta['start_time'] = self._hdf_group['starting_time'].value[0]
+        self._meta['headstage'] = self._headstage_id
+        nb = self._nwb.notebook()[int(self._trace_id[0])][self._headstage_id]
+        self._meta['notebook'] = nb
+        self._meta['clamp_mode'] = 'vc' if nb['Clamp Mode'] == 0 else 'ic'
     
     @property
     def clamp_mode(self):
-        return 'vc' if self.meta()['Clamp Mode'] == 0 else 'ic'
+        return 'vc' if self.meta()['notebook']['Clamp Mode'] == 0 else 'ic'
 
     @property
     def holding_potential(self):
@@ -241,14 +249,14 @@ class MiesRecording(PatchClampRecording):
     def _get_sample_rate(self):
         # Note: this is also available in meta()['Minimum Sampling interval'],
         # but that key is missing in some older NWB files.
-        return self.recording().attrs['IGORWaveScaling'][1,0] 
+        return self.primary_hdf.attrs['IGORWaveScaling'][1,0] 
         
     def da_chan(self):
         """Return the DA channel ID for this recording.
         """
         if self._da_chan is None:
-            hdf = self.nwb.hdf['stimulus/presentation']
-            stims = [k for k in hdf.keys() if k.startswith('data_%05d_'%self.trace_id[0])]
+            hdf = self._nwb.hdf['stimulus/presentation']
+            stims = [k for k in hdf.keys() if k.startswith('data_%05d_'%self._trace_id[0])]
             for s in stims:
                 elec = hdf[s]['electrode_name'].value[0]
                 if elec == 'electrode_%d' % self._headstage_id:
@@ -262,13 +270,6 @@ class MiesRecording(PatchClampRecording):
 
         Keys include 'stim_name', 'start_time', and all parameters recorded in the lab notebook.
         """
-        if self._meta is None:
-            self._meta = OrderedDict()
-            self._meta['stim_name'] = self._hdf_group['stimulus_description'].value[0]
-            self._meta['start_time'] = self._hdf_group['starting_time'].value[0]
-            self._meta['headstage'] = self._headstage_id
-            nb = self._nwb.notebook()[int(self._trace_id[0])][self._headstage_id]
-            self._meta.update(nb)
         return self._meta
 
     def __repr__(self):
@@ -278,14 +279,14 @@ class MiesRecording(PatchClampRecording):
         elif mode == 'ic':
             extra = "mode=IC holding=%d" % int(np.round(self.holding_current))
 
-        return "<%s %d.%d  stim=%s %s>" % (self.__class__.__name__, self.trace_id[0], self._headstage_id, meta['stim_name'], extra)
+        return "<%s %d.%d  stim=%s %s>" % (self.__class__.__name__, self._trace_id[0], self._headstage_id, meta['stim_name'], extra)
 
 
 class MiesSyncRecording(SyncRecording):
     """Represents one recorded sweep with multiple channels.
     """
     def __init__(self, nwb, sweep_id):
-        self.nwb = nwb
+        self._nwb = nwb
         self.sweep_id = sweep_id
         self._ad_channels = None
         self._meta = None
@@ -303,7 +304,7 @@ class MiesSyncRecording(SyncRecording):
         """
         if self._ad_channels is None:
             chans = []
-            for k in self.nwb.hdf['acquisition/timeseries'].keys():
+            for k in self._nwb.hdf['acquisition/timeseries'].keys():
                 if not k.startswith('data_%05d_' % self.sweep_id):
                     continue
                 chans.append(int(k.split('_')[-1][2:]))
@@ -318,8 +319,9 @@ class MiesSyncRecording(SyncRecording):
         """
         if all_chans:
             m = OrderedDict()
-            for trace in self.traces().values():
-                for k,v in trace.meta().items():
+            for dev in self.devices:
+                rec = self[dev]
+                for k,v in rec.meta().items():
                     if k not in m:
                         m[k] = []
                     m[k].append(v)
@@ -366,32 +368,32 @@ class MiesSyncRecording(SyncRecording):
         #return MiesNwb.igorpro_date(self.meta()['TimeStamp'])
 
 
-class SweepGroup(object):
-    """Represents a collection of Sweeps that were acquired contiguously and
-    all share the same stimulus parameters.
-    """
-    def __init__(self, nwb, sweeps):
-        self.nwb = nwb
-        self.sweeps = sweeps
+#class SweepGroup(object):
+    #"""Represents a collection of Sweeps that were acquired contiguously and
+    #all share the same stimulus parameters.
+    #"""
+    #def __init__(self, nwb, sweeps):
+        #self._nwb = nwb
+        #self.sweeps = sweeps
         
-    def meta(self):
-        """Return metadata from the first sweep in this group.
-        """
-        return self.sweeps[0].meta()
+    #def meta(self):
+        #"""Return metadata from the first sweep in this group.
+        #"""
+        #return self.sweeps[0].meta()
         
-    def data(self):
-        """Return a single array containing all data from all sweeps in this
-        group.
+    #def data(self):
+        #"""Return a single array containing all data from all sweeps in this
+        #group.
         
-        The array shape is (sweeps, channels, samples, 2).
-        """
-        return self.nwb.pack_sweep_data(self.sweeps)
+        #The array shape is (sweeps, channels, samples, 2).
+        #"""
+        #return self._nwb.pack_sweep_data(self.sweeps)
 
-    def describe(self):
-        """Return a string description of this group (taken from the first sweep).
-        """
-        return self.sweeps[0].describe()
+    #def describe(self):
+        #"""Return a string description of this group (taken from the first sweep).
+        #"""
+        #return self.sweeps[0].describe()
 
-    def __repr__(self):
-        ids = self.sweeps[0].sweep_id, self.sweeps[-1].sweep_id
-        return "<SweepGroup %d-%d>" % ids
+    #def __repr__(self):
+        #ids = self.sweeps[0].sweep_id, self.sweeps[-1].sweep_id
+        #return "<SweepGroup %d-%d>" % ids

@@ -3,7 +3,7 @@ from scipy.ndimage import gaussian_filter
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui, QtCore
 from ..plot_grid import PlotGrid
-from ...miesnwb import MiesNwb, SweepGroup
+from ...miesnwb import MiesNwb
 
 
 class MultipatchMatrixView(QtGui.QWidget):

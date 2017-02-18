@@ -4,7 +4,7 @@ import pyqtgraph as pg
 import pyqtgraph.reload
 from pyqtgraph.Qt import QtGui, QtCore
 from ..plot_grid import PlotGrid
-from ...miesnwb import MiesNwb, SweepGroup
+from ...miesnwb import MiesNwb
 
 
 class SweepView(QtGui.QWidget):
@@ -43,13 +43,13 @@ class SweepView(QtGui.QWidget):
         # collect data
         data = MiesNwb.pack_sweep_data(sweeps)  # returns (sweeps, channels, samples, 2)
         data, stim = data[...,0], data[...,1]  # unpack stim and recordings
-        dt = sweeps[0].traces().values()[0].sample_rate
+        dt = sweeps[0].recordings[0]['primary'].sample_rate
         t = np.arange(data.shape[2]) * dt
 
         # mask for selected channels
-        mask = np.array([ch in chans for ch in sweeps[0].channels()])
+        mask = np.array([ch in chans for ch in sweeps[0].devices])
         data = data[:, mask]
-        chans = np.array(sweeps[0].channels())[mask]
+        chans = np.array(sweeps[0].devices)[mask]
 
         # setup plot grid
         self.plots.set_shape(len(chans), 1)
@@ -76,9 +76,9 @@ class SweepView(QtGui.QWidget):
         for j in range(data.shape[1]):
             sw = sweeps[0]
             ch = chans[j]
-            tr = sw.traces()[ch]
-            units = 'A' if tr.meta()['Clamp Mode'] == 0 else 'V'
-            self.plots[j, 0].setLabels(left=("Channel %d" % tr.headstage_id, units))
+            tr = sw[ch]
+            units = 'A' if tr.clamp_mode == 'vc' else 'V'
+            self.plots[j, 0].setLabels(left=("Channel %d" % ch, units))
 
         # link x axes together
         for j in range(1, data.shape[1]):
