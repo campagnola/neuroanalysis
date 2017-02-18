@@ -3,7 +3,8 @@ from datetime import datetime
 from collections import OrderedDict
 import numpy as np
 import h5py
-from .data import Recording, Trace
+
+from .data import SyncRecording, PatchClampRecording, Trace
 
 
 class MiesNwb(object):
@@ -94,7 +95,7 @@ class MiesNwb(object):
             for k in self.hdf['acquisition/timeseries'].keys():
                 a, b, c = k.split('_')
                 sweeps.add(b)
-            self._sweeps = [Sweep(self, int(sweep_id)) for sweep_id in sorted(list(sweeps))]
+            self._sweeps = [MiesSyncRecording(self, int(sweep_id)) for sweep_id in sorted(list(sweeps))]
         return self._sweeps
     
     def sweep_groups(self, keys=('shape', 'stim_name', 'V-Clamp Holding Level', 'Clamp Mode')):
@@ -121,12 +122,12 @@ class MiesNwb(object):
             for sweep in self.sweeps():
                 # get selected metadata for grouping sweeps
                 meta = {}
-                for ch in sweep.channels():
-                    trace = sweep.traces()[ch]
-                    m = trace.meta()
-                    meta[ch] = {k:m[k] for k in keys}
+                for ch in sweep.devices:
+                    rec = sweep[ch]
+                    m = rec.meta()
+                    meta[ch] = {k:m.get(k) for k in keys}
                     if group_by_shape:
-                        meta[ch]['shape'] = len(trace)
+                        meta[ch]['shape'] = rec['primary'].shape[0]
 
                 if len(current_group) == 0:
                     current_group.append(sweep)
@@ -167,10 +168,8 @@ class MiesNwb(object):
 
 class MiesTrace(Trace):
     def __init__(self, recording, chan):
-        Trace.__init__(self)
-        self._recording = recording
+        Trace.__init__(self, recording=recording)
         self._chan = chan
-        self._data = None
         
     @property
     def start_time(self):
@@ -201,15 +200,15 @@ class MiesRecording(PatchClampRecording):
         self._sweep = sweep
         self._nwb = sweep.nwb
         self._trace_id = (sweep_id, ad_chan)
-        self._hdf_group = self.nwb.hdf['acquisition/timeseries/data_%05d_AD%d' % self.trace_id]
-        self._headstage_id = int(self.hdf_group['electrode_name'].value[0].split('_')[1])
+        self._hdf_group = self._nwb.hdf['acquisition/timeseries/data_%05d_AD%d' % self._trace_id]
+        self._headstage_id = int(self._hdf_group['electrode_name'].value[0].split('_')[1])
         self._meta = None
         self._da_chan = None
         self._data = None
         
         chans = {'primary': MiesTrace(self, 'primary'), 'command': MiesTrace(self, 'command')}
         props = {'device_type': 'MultiClamp 700'}
-        PatchClampRecording.__init__(self, channels=chans, properties=props)
+        PatchClampRecording.__init__(self, channels=chans, **props)
     
     @property
     def clamp_mode(self):
@@ -227,13 +226,13 @@ class MiesRecording(PatchClampRecording):
     def primary_hdf(self):
         """The raw HDF5 data containing the primary channel recording
         """
-        return self.hdf_group['data']        
+        return self._hdf_group['data']        
 
     @property
     def command_hdf(self):
         """The raw HDF5 data containing the stimulus command 
         """
-        return self.nwb.hdf['stimulus/presentation/data_%05d_DA%d/data' % (self.trace_id[0], self.da_chan())]
+        return self._nwb.hdf['stimulus/presentation/data_%05d_DA%d/data' % (self._trace_id[0], self.da_chan())]
 
     def _get_stim_data(self):
         scale = 1e-3 if self.clamp_mode == 'vc' else 1e-12
@@ -252,10 +251,10 @@ class MiesRecording(PatchClampRecording):
             stims = [k for k in hdf.keys() if k.startswith('data_%05d_'%self.trace_id[0])]
             for s in stims:
                 elec = hdf[s]['electrode_name'].value[0]
-                if elec == 'electrode_%d' % self.headstage_id:
+                if elec == 'electrode_%d' % self._headstage_id:
                     self._da_chan = int(s.split('_')[-1][2:])
             if self._da_chan is None:
-                raise Exception("Cannot find DA channel for headstage %d" % self.headstage_id)
+                raise Exception("Cannot find DA channel for headstage %d" % self._headstage_id)
         return self._da_chan
 
     def meta(self):
@@ -265,10 +264,10 @@ class MiesRecording(PatchClampRecording):
         """
         if self._meta is None:
             self._meta = OrderedDict()
-            self._meta['stim_name'] = self.hdf_group['stimulus_description'].value[0]
-            self._meta['start_time'] = self.hdf_group['starting_time'].value[0]
-            self._meta['headstage'] = self.headstage_id
-            nb = self.nwb.notebook()[int(self.trace_id[0])][self.headstage_id]
+            self._meta['stim_name'] = self._hdf_group['stimulus_description'].value[0]
+            self._meta['start_time'] = self._hdf_group['starting_time'].value[0]
+            self._meta['headstage'] = self._headstage_id
+            nb = self._nwb.notebook()[int(self._trace_id[0])][self._headstage_id]
             self._meta.update(nb)
         return self._meta
 
@@ -279,38 +278,37 @@ class MiesRecording(PatchClampRecording):
         elif mode == 'ic':
             extra = "mode=IC holding=%d" % int(np.round(self.holding_current))
 
-        return "<%s %d.%d  stim=%s %s>" % (self.__class__.__name__, self.trace_id[0], self.headstage_id, meta['stim_name'], extra)
+        return "<%s %d.%d  stim=%s %s>" % (self.__class__.__name__, self.trace_id[0], self._headstage_id, meta['stim_name'], extra)
 
 
-class Sweep(object):
+class MiesSyncRecording(SyncRecording):
     """Represents one recorded sweep with multiple channels.
     """
     def __init__(self, nwb, sweep_id):
         self.nwb = nwb
         self.sweep_id = sweep_id
-        self._channels = None
+        self._ad_channels = None
         self._meta = None
         self._traces = None
         self._notebook_entry = None
+        
+        devs = OrderedDict()
+        for ch in self.ad_channels():
+            rec = MiesRecording(self, sweep_id, ch)
+            devs[rec._headstage_id] = rec
+        SyncRecording.__init__(self, devs)
 
-    def channels(self):
+    def ad_channels(self):
         """Return a list of AD channels participating in this sweep.
         """
-        if self._channels is None:
+        if self._ad_channels is None:
             chans = []
             for k in self.nwb.hdf['acquisition/timeseries'].keys():
                 if not k.startswith('data_%05d_' % self.sweep_id):
                     continue
                 chans.append(int(k.split('_')[-1][2:]))
-            self._channels = sorted(chans)
-        return self._channels
-
-    def traces(self):
-        """Return a dict of Traces in this sweep, one per channel.
-        """
-        if self._traces is None:
-            self._traces = OrderedDict([(ch, Trace(self, self.sweep_id, ch)) for ch in self.channels()])
-        return self._traces
+            self._ad_channels = sorted(chans)
+        return self._ad_channels
 
     def meta(self, all_chans=False):
         """Return a dict containing the metadata key/value pairs that are shared
@@ -343,29 +341,29 @@ class Sweep(object):
                 self._meta = m
             return self._meta
         
-    def data(self):
-        """Return a single array containing recorded data and stimuli from all channels recorded
-        during this sweep.
+    #def data(self):
+        #"""Return a single array containing recorded data and stimuli from all channels recorded
+        #during this sweep.
         
-        The array shape is (channels, samples, 2).
-        """
-        traces = self.traces()
-        chan_data = [traces[ch].data() for ch in sorted(list(traces))]
-        arr = np.empty((len(chan_data),) + chan_data[0].shape, chan_data[0].dtype)
-        for i,data in enumerate(chan_data):
-            arr[i] = data
-        return arr
+        #The array shape is (channels, samples, 2).
+        #"""
+        #traces = self.traces()
+        #chan_data = [traces[ch].data() for ch in sorted(list(traces))]
+        #arr = np.empty((len(chan_data),) + chan_data[0].shape, chan_data[0].dtype)
+        #for i,data in enumerate(chan_data):
+            #arr[i] = data
+        #return arr
 
-    def shape(self):
-        return (len(self.channels()), len(self.traces().values()[0]))
+    #def shape(self):
+        #return (len(self.channels()), len(self.traces().values()[0]))
 
-    def describe(self):
-        """Return a string description of this sweep.
-        """
-        return "\n".join(map(repr, self.traces().values()))
+    #def describe(self):
+        #"""Return a string description of this sweep.
+        #"""
+        #return "\n".join(map(repr, self.traces().values()))
 
-    def start_time(self):
-        return MiesNwb.igorpro_date(self.meta()['TimeStamp'])
+    #def start_time(self):
+        #return MiesNwb.igorpro_date(self.meta()['TimeStamp'])
 
 
 class SweepGroup(object):

@@ -17,6 +17,7 @@ message = """Console variables:
 
 """
 console = acq4.pyqtgraph.console.ConsoleWidget(text=message)
+console.catchNextException()
 console.show()
 
 # start up ACQ4 data manager

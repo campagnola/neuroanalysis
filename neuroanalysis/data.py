@@ -117,8 +117,9 @@ class SyncRecording(object):
     This is typically the result of recording from multiple devices at the same time
     (for example, two patch-clamp amplifiers and a camera).
     """
-    def __init__(self):
-        pass
+    def __init__(self, devices=None):
+        self._devices = devices if devices is not None else OrderedDict()
+        self._meta = OrderedDict()
 
     @property
     def type(self):
@@ -130,11 +131,12 @@ class SyncRecording(object):
     def devices(self):
         """A list of the names of devices in this recording.
         """
-        pass
+        return self._devices.keys()
 
-    def __getitem__(self):
+    def __getitem__(self, item):
         """Return a recording given its device name.
         """
+        return self._devices[item]
 
     @property
     def recordings(self):
@@ -218,7 +220,7 @@ class PatchClampRecording(Recording):
         meta = OrderedDict()
         for k in ['clamp_mode', 'patch_mode', 'holding_potential', 'holding_current']:
             meta[k] = kwds.pop(k, None)
-        Recording.__init__(*args, **kwds)
+        Recording.__init__(self, *args, **kwds)
         self._meta.update(meta)
         
     @property
@@ -277,14 +279,14 @@ class Trace(object):
     Traces may specify units, a starting time, and either a sample period or an
     array of time values.
     """
-    def __init__(self, data, dt=None, start_time=None, time_values=None, units=None, recording=None):
+    def __init__(self, data=None, dt=None, start_time=None, time_values=None, units=None, recording=None):
         self._data = data
         self._meta = OrderedDict()
         self._meta['start_time'] = start_time
         self._meta['dt'] = dt
         self._meta['units'] = units
         self._time_values = time_values
-        self._recording = util.weakref(recording)
+        self._recording = util.WeakRef(recording)
         
     @property
     def data(self):
@@ -322,11 +324,11 @@ class Trace(object):
 
     @property
     def shape(self):
-        return self._data.shape
+        return self.data.shape
 
     @property
     def ndim(self):
-        return self._data.ndim
+        return self.data.ndim
     
     @property
     def recording(self):
