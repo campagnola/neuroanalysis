@@ -18,15 +18,16 @@ def detect_evoked_spike(data, pulse_edges, **kwds):
     """
     trace = data['primary']
     if data.clamp_mode == 'vc':
-        return detect_evoked_spike_vc(trace, pulse_edges, **kwds)
+        return detect_vc_evoked_spike(trace, pulse_edges, **kwds)
     elif data.clamp_mode == 'ic':
-        return detect_evoked_spike_ic(trace, pulse_edges, **kwds)
+        return detect_ic_evoked_spike(trace, pulse_edges, **kwds)
     else:
         raise ValueError("Unsupported clamp mode %s" % trace.clamp_mode)
 
 
 def detect_ic_evoked_spike(trace, pulse_edges, threshold=-10e-3, duration=3e-3):
     assert trace.data.ndim == 1
+    pulse_edges = tuple(map(int, pulse_edges))  # make sure pulse_edges is (int, int)
     
     dt = trace.dt
     w = int(duration / dt)
@@ -91,6 +92,7 @@ def detect_vc_evoked_spike(trace, pulse_edges, sigma=20e-6, delay=150e-6, thresh
         raise TypeError("data must be PatchClampRecording or Trace instance.")
     
     assert trace.ndim == 1
+    pulse_edges = tuple(map(int, pulse_edges))  # make sure pulse_edges is (int, int)
     
     dt = trace.dt
 

@@ -169,7 +169,10 @@ class MiesNwb(object):
 class MiesTrace(Trace):
     def __init__(self, recording, chan):
         start = recording._meta['start_time']
-        dt = 1.0 / recording._get_sample_rate()
+        
+        # Note: this is also available in meta()['Minimum Sampling interval'],
+        # but that key is missing in some older NWB files.
+        dt = recording.primary_hdf.attrs['IGORWaveScaling'][1,0] / 1000.
         Trace.__init__(self, recording=recording, channel_id=chan, dt=dt, start_time=start)
     
     @property
@@ -216,11 +219,11 @@ class MiesRecording(PatchClampRecording):
 
     @property
     def holding_potential(self):
-        return self.meta()['V-Clamp Holding Level']
+        return self.meta()['notebook']['V-Clamp Holding Level']
     
     @property
     def holding_current(self):
-        return self.meta()['I-Clamp Holding Level']
+        return self.meta()['notebook']['I-Clamp Holding Level']
     
     @property
     def primary_hdf(self):
@@ -238,11 +241,6 @@ class MiesRecording(PatchClampRecording):
         scale = 1e-3 if self.clamp_mode == 'vc' else 1e-12
         return np.array(self.command_hdf) * scale
 
-    def _get_sample_rate(self):
-        # Note: this is also available in meta()['Minimum Sampling interval'],
-        # but that key is missing in some older NWB files.
-        return self.primary_hdf.attrs['IGORWaveScaling'][1,0] 
-        
     def da_chan(self):
         """Return the DA channel ID for this recording.
         """
@@ -271,7 +269,7 @@ class MiesRecording(PatchClampRecording):
         elif mode == 'ic':
             extra = "mode=IC holding=%d" % int(np.round(self.holding_current))
 
-        return "<%s %d.%d  stim=%s %s>" % (self.__class__.__name__, self._trace_id[0], self.device_id, meta['stim_name'], extra)
+        return "<%s %d.%d  stim=%s %s>" % (self.__class__.__name__, self._trace_id[0], self.device_id, self._meta['stim_name'], extra)
 
 
 class MiesSyncRecording(SyncRecording):

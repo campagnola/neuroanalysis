@@ -69,16 +69,17 @@ class PairView(QtGui.QWidget):
             
             color = pg.mkColor((i, len(sweeps)*1.3))
             
-            for trace, plot in [(pre_trace, self.pre_plot), (post_trace, self.post_plot)]:
-                f = self.filter.process(trace)
-                plot.plot(f.time_values, f.data, pen=color)
+            post_filt = self.filter.process(post_trace)
+            
+            for trace, plot in [(pre_trace, self.pre_plot), (post_filt, self.post_plot)]:
+                plot.plot(trace.time_values, trace.data, pen=color)
                 plot.setLabels(left="Channel %d" % trace.recording.device_id, bottom=("Time", 's'))
 
             # Detect pulse times
             stim = sweep[pre]['command'].data
             sdiff = np.diff(stim)
-            on_times = np.argwhere(sdiff > 0)[:, 1:]  # 1: skips test pulse
-            off_times = np.argwhere(sdiff < 0)[:, 1:]
+            on_times = np.argwhere(sdiff > 0)[1:, 0]  # 1: skips test pulse
+            off_times = np.argwhere(sdiff < 0)[1:, 0]
 
             # detect spike times
             spike_inds = []
@@ -87,8 +88,9 @@ class PairView(QtGui.QWidget):
                 if spike is None:
                     spike_inds.append(None)
                 else:
-                    spike_inds.append(spike['rise_ind'])
+                    spike_inds.append(spike['rise_index'])
                     
-            vticks = pg.VTickGroup([x for x in spike_inds if x is not None], pen=color)
+            dt = pre_trace.dt
+            vticks = pg.VTickGroup([x * dt for x in spike_inds if x is not None], yrange=[0.0, 0.2], pen=color)
             self.pre_plot.addItem(vticks)
 

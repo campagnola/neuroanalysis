@@ -342,7 +342,7 @@ class Trace(object):
         if self._time_values is None:
             if self._meta['dt'] is None:
                 raise TypeError("No time values or sample rate were specified for this Trace.")
-            self._time_values = np.arange(len(self._data)) * self.dt
+            self._time_values = np.arange(len(self.data)) * self.dt
         return self._time_values
 
     @property
@@ -367,7 +367,7 @@ class Trace(object):
         tval = self._time_values
         if tval is not None:
             tval = tval.copy()
-        return Trace(data, time_values=tval, **self._meta)
+        return Trace(data, time_values=tval, recording=self.recording, **self._meta)
     
 
 # TODO: this class should not be a subclass of PatchClampRecording
