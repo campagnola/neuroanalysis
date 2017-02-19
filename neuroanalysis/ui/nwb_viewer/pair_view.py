@@ -64,20 +64,18 @@ class PairView(QtGui.QWidget):
         
         # Iterate over selected channels of all sweeps, plotting traces one at a time
         for i,sweep in enumerate(sweeps):
-            pre_trace = sweep.traces()[pre]
-            post_trace = sweep.traces()[post]
+            pre_trace = sweep[pre]['primary']
+            post_trace = sweep[post]['primary']
             
             color = pg.mkColor((i, len(sweeps)*1.3))
             
             for trace, plot in [(pre_trace, self.pre_plot), (post_trace, self.post_plot)]:
-                dt = trace.sample_rate / 1000.
-                t = Trace(trace.data()[:,0], dt=dt)
-                f = self.filter.process(t)
+                f = self.filter.process(trace)
                 plot.plot(f.time_values, f.data, pen=color)
-                plot.setLabels(left="Channel %d" % trace.headstage_id, bottom=("Time", 's'))
+                plot.setLabels(left="Channel %d" % trace.recording.device_id, bottom=("Time", 's'))
 
             # Detect pulse times
-            stim = pre_trace.data()[:,1]
+            stim = sweep[pre]['command'].data
             sdiff = np.diff(stim)
             on_times = np.argwhere(sdiff > 0)[:, 1:]  # 1: skips test pulse
             off_times = np.argwhere(sdiff < 0)[:, 1:]
@@ -85,7 +83,7 @@ class PairView(QtGui.QWidget):
             # detect spike times
             spike_inds = []
             for on, off in zip(on_times, off_times):
-                spike = detect_evoked_spike(trace, [on, off])
+                spike = detect_evoked_spike(sweep[pre], [on, off])
                 if spike is None:
                     spike_inds.append(None)
                 else:

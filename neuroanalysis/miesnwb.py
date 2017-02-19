@@ -168,29 +168,22 @@ class MiesNwb(object):
 
 class MiesTrace(Trace):
     def __init__(self, recording, chan):
-        Trace.__init__(self, recording=recording)
-        self._chan = chan
-        
-    @property
-    def start_time(self):
-        pass
-        
-    @property
-    def sample_rate(self):
-        return self.recording._get_sample_rate()
-
+        start = recording._meta['start_time']
+        dt = 1.0 / recording._get_sample_rate()
+        Trace.__init__(self, recording=recording, channel_id=chan, dt=dt, start_time=start)
+    
     @property
     def data(self):
         if self._data is None:
             rec = self.recording
-            if self._chan == 'primary':
+            chan = self.channel_id
+            if chan == 'primary':
                 scale = 1e-12 if rec.clamp_mode == 'vc' else 1e-3
                 self._data = np.array(rec.primary_hdf) * scale
-            elif self._chan == 'command':
+            elif chan == 'command':
                 scale = 1e-3 if rec.clamp_mode == 'vc' else 1e-12
                 self._data = np.array(rec.command_hdf) * scale
         return self._data
-    
     
     
 class MiesRecording(PatchClampRecording):
@@ -201,25 +194,21 @@ class MiesRecording(PatchClampRecording):
         self._nwb = sweep._nwb
         self._trace_id = (sweep_id, ad_chan)
         self._hdf_group = self._nwb.hdf['acquisition/timeseries/data_%05d_AD%d' % self._trace_id]
-        self._headstage_id = int(self._hdf_group['electrode_name'].value[0].split('_')[1])
-        self._meta = None
         self._da_chan = None
-        self._data = None
+        headstage_id = int(self._hdf_group['electrode_name'].value[0].split('_')[1])
+        start = self._hdf_group['starting_time'].value[0]
         
-        chans = OrderedDict([
-            ('primary', MiesTrace(self, 'primary')), 
-            ('command', MiesTrace(self, 'command'))
-        ])
-        props = {'device_type': 'MultiClamp 700'}
-        PatchClampRecording.__init__(self, channels=chans, **props)
+        PatchClampRecording.__init__(self, device_type='MyltiClamp 700', device_id=headstage_id,
+                                     sync_recording=sweep, start_time=start)
 
         # update metadata
         self._meta['stim_name'] = self._hdf_group['stimulus_description'].value[0]
-        self._meta['start_time'] = self._hdf_group['starting_time'].value[0]
-        self._meta['headstage'] = self._headstage_id
-        nb = self._nwb.notebook()[int(self._trace_id[0])][self._headstage_id]
+        nb = self._nwb.notebook()[int(self._trace_id[0])][headstage_id]
         self._meta['notebook'] = nb
         self._meta['clamp_mode'] = 'vc' if nb['Clamp Mode'] == 0 else 'ic'
+
+        self._channels['primary'] = MiesTrace(self, 'primary')
+        self._channels['command'] = MiesTrace(self, 'command')
     
     @property
     def clamp_mode(self):
@@ -262,10 +251,10 @@ class MiesRecording(PatchClampRecording):
             stims = [k for k in hdf.keys() if k.startswith('data_%05d_'%self._trace_id[0])]
             for s in stims:
                 elec = hdf[s]['electrode_name'].value[0]
-                if elec == 'electrode_%d' % self._headstage_id:
+                if elec == 'electrode_%d' % self.device_id:
                     self._da_chan = int(s.split('_')[-1][2:])
             if self._da_chan is None:
-                raise Exception("Cannot find DA channel for headstage %d" % self._headstage_id)
+                raise Exception("Cannot find DA channel for headstage %d" % self.device_id)
         return self._da_chan
 
     def meta(self):
@@ -282,7 +271,7 @@ class MiesRecording(PatchClampRecording):
         elif mode == 'ic':
             extra = "mode=IC holding=%d" % int(np.round(self.holding_current))
 
-        return "<%s %d.%d  stim=%s %s>" % (self.__class__.__name__, self._trace_id[0], self._headstage_id, meta['stim_name'], extra)
+        return "<%s %d.%d  stim=%s %s>" % (self.__class__.__name__, self._trace_id[0], self.device_id, meta['stim_name'], extra)
 
 
 class MiesSyncRecording(SyncRecording):
@@ -299,7 +288,7 @@ class MiesSyncRecording(SyncRecording):
         devs = OrderedDict()
         for ch in self.ad_channels():
             rec = MiesRecording(self, sweep_id, ch)
-            devs[rec._headstage_id] = rec
+            devs[rec.device_id] = rec
         SyncRecording.__init__(self, devs)
 
     def ad_channels(self):

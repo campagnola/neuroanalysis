@@ -177,16 +177,22 @@ class Recording(object):
     Each channel is described by a single Trace instance. Channels are often 
     recorded with the same timebase, but this is not strictly required.
     """
-    def __init__(self, channels, start_time=None, device_type=None, sync_recording=None, device_name=None):
-        self._meta = OrderedDict()
-        self._meta['start_time'] = start_time
-        self._meta['device_type'] = device_type
-        self._meta['device_name'] = device_name
+    def __init__(self, channels=None, start_time=None, device_type=None, device_id=None, sync_recording=None):
+        self._meta = OrderedDict([
+            ('start_time', start_time),
+            ('device_type', device_type),
+            ('device_id', device_id),
+        ])
         
-        channels = OrderedDict(channels)
-        for k,v in channels.items():
-            assert isinstance(v, Trace)
+        if channels is None:
+            channels = OrderedDict()
+        else:
+            channels = OrderedDict(channels)
+            for k,v in channels.items():
+                assert isinstance(v, Trace)
         self._channels = channels
+
+        self._sync_recording = util.WeakRef(sync_recording)
         
     @property
     def device_type(self):
@@ -207,6 +213,14 @@ class Recording(object):
         """The starting time (unix epoch) of this recording.
         """
         return self._meta['start_time']
+
+    @property
+    def device_id(self):
+        return self._meta['device_id']
+    
+    @property
+    def sync_recording(self):
+        return self._sync_recording()
 
     def __getitem__(self, chan):
         return self._channels[chan]
@@ -286,12 +300,14 @@ class Trace(object):
     Traces may specify units, a starting time, and either a sample period or an
     array of time values.
     """
-    def __init__(self, data=None, dt=None, start_time=None, time_values=None, units=None, recording=None):
+    def __init__(self, data=None, dt=None, start_time=None, time_values=None, units=None, channel_id=None, recording=None):
         self._data = data
-        self._meta = OrderedDict()
-        self._meta['start_time'] = start_time
-        self._meta['dt'] = dt
-        self._meta['units'] = units
+        self._meta = OrderedDict([
+            ('start_time', start_time),
+            ('dt', dt),
+            ('units', units),
+            ('channel_id', channel_id),
+        ])
         self._time_values = time_values
         self._recording = util.WeakRef(recording)
         
@@ -311,11 +327,11 @@ class Trace(object):
 
     @property
     def dt(self):
-        if self._dt is None:
+        if self._meta['dt'] is None:
             # assume regular sampling
             t = self.time_values
-            self._dt = t[1] - t[0]
-        return self._dt
+            self._meta['dt'] = t[1] - t[0]
+        return self._meta['dt']
     
     @property
     def units(self):
@@ -324,7 +340,7 @@ class Trace(object):
     @property
     def time_values(self):
         if self._time_values is None:
-            if self._dt is None:
+            if self._meta['dt'] is None:
                 raise TypeError("No time values or sample rate were specified for this Trace.")
             self._time_values = np.arange(len(self._data)) * self.dt
         return self._time_values
@@ -338,6 +354,10 @@ class Trace(object):
         return self.data.ndim
     
     @property
+    def channel_id(self):
+        return self._meta['channel_id']
+    
+    @property
     def recording(self):
         return self._recording()
 
@@ -347,7 +367,7 @@ class Trace(object):
         tval = self._time_values
         if tval is not None:
             tval = tval.copy()
-        return Trace(data, dt=self._dt, start_time=self._start_time, time_values=tval, units=self._units)
+        return Trace(data, time_values=tval, **self._meta)
     
 
 # TODO: this class should not be a subclass of PatchClampRecording

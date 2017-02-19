@@ -63,9 +63,9 @@ class AnalyzerView(QtGui.QWidget):
         for sweep in sweeps:
             for i in range(n_channels):
                 chan = channels[i]
-                trace = sweep.traces()[chan]
-                self.plots[i,0].plot(trace.recording(), antialias=True)
+                trace = sweep[chan]
+                self.plots[i,0].plot(trace['primary'].data, antialias=True)
                 
         # label plots
         for i,ch in enumerate(channels):
-            self.plots[i,0].setLabels(left="Channel %d" % sweeps[0].traces()[ch].headstage_id)
+            self.plots[i,0].setLabels(left="Channel %d" % ch)
