@@ -16,11 +16,62 @@ This abstraction layer also helps to enforce good coding practice by separating 
 analysis, and visualization.
 """
 import numpy as np
+import pandas
 from . import util
 from collections import OrderedDict
 
 
-class Experiment(object):
+
+class Container(object):
+    """Generic hierarchical container. 
+    
+    This class is the basis for most other classes in the DAL.
+    """
+    def __init__(self):
+        self._meta = OrderedDict()
+        
+    @property
+    def parent(self):
+        return None
+    
+    @property
+    def children(self):
+        return []
+
+    @property
+    def key(self):
+        return None
+    
+    @property
+    def meta(self):
+        return self._meta
+
+    @property
+    def all_children(self):
+        allch = [self]
+        for ch in self.children:
+            allch.extend(ch.all_children)
+        return allch
+
+    @property
+    def all_meta(self):
+        allmeta = OrderedDict()
+        for obj in self.path:
+            m = obj.meta
+            allmeta.update(m)
+        return allmeta
+        
+    @property
+    def path(self):
+        obj = self
+        path = []
+        while obj is not None:
+            path.append(obj)
+            obj = obj.parent
+        return path[::-1]
+
+
+class Experiment(Container):
     """A generic container for RecordingSequence and SyncRecording instances that
     were acquired together.
     
@@ -32,18 +83,82 @@ class Experiment(object):
     Experiment, whereas recordings made from different pieces of tissue probably
     belong in different Experiments.
     """
+    def __init__(self, data=None, meta=None):
+        Container.__init__(self)
+        self._data = data
+        if meta is not None:
+            self._meta.update(OrderedDict(meta))
+    
     @property
-    def recordings(self):
-        """A list of SyncRecording instances in this Experiment sorted by starting time.
-        """
+    def contents(self):
+        """A list of data objects (Trace, Recording, SyncRecording, RecordingSequence)
+        directly contained in this experiment.
         
-    @property
-    def sequences(self):
-        """A list of RecordingSequence instances in this Experiment sorted by starting gime.
+        Grandchild objects are not included in this list.
         """
+        return self._data[:]
 
+    def find(self, type):
+        return [c for c in self.all_children if isinstance(c, type)]
 
-class RecordingSequence(object):
+    @property
+    def all_traces(self):
+        return self.find(Trace)
+    
+    @property
+    def all_recordings(self):
+        return self.find(Recording)
+
+    @property
+    def all_sync_recordings(self):
+        return self.find(SyncRecording)
+
+    def meta_table(self, objs):
+        # collect all metadata
+        meta = []
+        for i,o in enumerate(objs):
+            meta.append(o.all_meta)
+            
+        # generate a list of common fields (in the correct order)
+        fields = set(meta[0].keys())
+        for m in meta[1:]:
+            fields &= set(m.keys())
+        order = list(meta[0].keys())
+        for k in order[:]:
+            if k not in fields:
+                order.remove(k)
+        
+        # transpose
+        tr = OrderedDict()
+        for k in order:
+            tr[k] = [m[k] for m in meta]
+        
+        # create a table
+        return pandas.DataFrame(tr)
+
+    @property
+    def trace_table(self):
+        return self.meta_table(self.all_traces)
+
+    @property
+    def parent(self):
+        """None
+        
+        This is a convenience property used for traversing the object hierarchy.
+        """
+        return None
+    
+    @property
+    def children(self):
+        """Alias for self.contents
+        
+        This is a convenience property used for traversing the object hierarchy.
+        """
+        return self.contents
+    
+    
+
+class RecordingSequence(Container):
     
     #  Acquisition?
     #  RecordingSet?
@@ -103,6 +218,22 @@ class RecordingSequence(object):
         Each parameter must be a key in the metadata for a single recording.
         """
 
+    @property
+    def parent(self):
+        """None
+        
+        This is a convenience property used for traversing the object hierarchy.
+        """
+        return None
+    
+    @property
+    def children(self):
+        """Alias for self.contents
+        
+        This is a convenience property used for traversing the object hierarchy.
+        """
+        return self.contents
+
 
 class IVCurve(RecordingSequence):
     """A sequence of recordings on a single patch-clamp amplifier that vary the amplitude
@@ -111,7 +242,7 @@ class IVCurve(RecordingSequence):
     """
 
 
-class SyncRecording(object):
+class SyncRecording(Container):
     """Representation of multiple synchronized recordings.
 
     This is typically the result of recording from multiple devices at the same time
@@ -119,7 +250,7 @@ class SyncRecording(object):
     """
     def __init__(self, recordings=None):
         self._recordings = recordings if recordings is not None else OrderedDict()
-        self._meta = OrderedDict()
+        Container.__init__(self)
 
     @property
     def type(self):
@@ -144,13 +275,12 @@ class SyncRecording(object):
         """
         return self._recordings.values()
 
-    @property
-    def meta(self):
-        """A dictionary describing arbitrary metadata for this recording.
-        """
-
     def data(self):
         return np.concatenate([self[dev].data()[None, :] for dev in self.devices], axis=0)
+
+    @property
+    def children(self):
+        return self.recordings
 
 
 class MultipatchProbe(SyncRecording):
@@ -169,7 +299,7 @@ device_tree = {
 }
 
 
-class Recording(object):
+class Recording(Container):
     """Representation of a single continuous data acquisition from a single device,
     possibly with multiple channels of data (for example, a recording from a single
     patch-clamp headstage with input and output channels, or ).
@@ -178,6 +308,7 @@ class Recording(object):
     recorded with the same timebase, but this is not strictly required.
     """
     def __init__(self, channels=None, start_time=None, device_type=None, device_id=None, sync_recording=None):
+        Container.__init__(self)
         self._meta = OrderedDict([
             ('start_time', start_time),
             ('device_type', device_type),
@@ -227,6 +358,14 @@ class Recording(object):
 
     def data(self):
         return np.concatenate([self[ch].data[:,None] for ch in self.channels], axis=1)
+
+    @property
+    def parent(self):
+        return self.sync_recording
+    
+    @property
+    def children(self):
+        return list(self._channels.values())
 
 
 class PatchClampRecording(Recording):
@@ -284,7 +423,7 @@ class PatchClampRecording(Recording):
         return "<%s %s>" % (self.__class__.__name__, extra)
 
 
-class Trace(object):
+class Trace(Container):
     """A homogeneous time series data set. 
     
     This is a representation of a single stream of data recorded over time. The
@@ -301,6 +440,7 @@ class Trace(object):
     array of time values.
     """
     def __init__(self, data=None, dt=None, start_time=None, time_values=None, units=None, channel_id=None, recording=None):
+        Container.__init__(self)
         self._data = data
         self._meta = OrderedDict([
             ('start_time', start_time),
@@ -368,6 +508,10 @@ class Trace(object):
         if tval is not None:
             tval = tval.copy()
         return Trace(data, time_values=tval, recording=self.recording, **self._meta)
+
+    @property
+    def parent(self):
+        return self.recording
     
 
 # TODO: this class should not be a subclass of PatchClampRecording

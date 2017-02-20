@@ -4,13 +4,14 @@ from collections import OrderedDict
 import numpy as np
 import h5py
 
-from .data import SyncRecording, PatchClampRecording, Trace
+from .data import Experiment, SyncRecording, PatchClampRecording, Trace
 
 
-class MiesNwb(object):
+class MiesNwb(Experiment):
     """Class for accessing data from a MIES-generated NWB file.
     """
     def __init__(self, filename):
+        Experiment.__init__(self)
         self.filename = filename
         self.hdf = h5py.File(filename, 'r')
         self._sweeps = None
@@ -87,8 +88,9 @@ class MiesNwb(object):
             self._notebook = nb_entries
         return self._notebook
 
-    def sweeps(self):
-        """Return a list of all sweeps in this file.
+    @property
+    def contents(self):
+        """A list of all sweeps in this file.
         """
         if self._sweeps is None:
             sweeps = set()
@@ -98,49 +100,49 @@ class MiesNwb(object):
             self._sweeps = [MiesSyncRecording(self, int(sweep_id)) for sweep_id in sorted(list(sweeps))]
         return self._sweeps
     
-    def sweep_groups(self, keys=('shape', 'stim_name', 'V-Clamp Holding Level', 'Clamp Mode')):
-        """Return a list of sweep groups--each group contains one or more
-        contiguous sweeps with matching metadata.
+    #def sweep_groups(self, keys=('shape', 'stim_name', 'V-Clamp Holding Level', 'Clamp Mode')):
+        #"""Return a list of sweep groups--each group contains one or more
+        #contiguous sweeps with matching metadata.
 
-        The *keys* argument contains the set of metadata keys that are compared
-        to determine group boundaries.
+        #The *keys* argument contains the set of metadata keys that are compared
+        #to determine group boundaries.
 
-        This is used mainly for grouping together sweeps that were repeated or were 
-        part of a stim set.
-        """
-        keys = list(keys)
-        if 'shape' in keys:
-            group_by_shape = True
-            keys.remove('shape')
-        else:
-            group_by_shape = False
+        #This is used mainly for grouping together sweeps that were repeated or were 
+        #part of a stim set.
+        #"""
+        #keys = list(keys)
+        #if 'shape' in keys:
+            #group_by_shape = True
+            #keys.remove('shape')
+        #else:
+            #group_by_shape = False
 
-        if self._groups is None:
-            current_group = []
-            current_meta = None
-            groups = [current_group]
-            for sweep in self.sweeps():
-                # get selected metadata for grouping sweeps
-                meta = {}
-                for ch in sweep.devices:
-                    rec = sweep[ch]
-                    m = rec.meta()
-                    meta[ch] = {k:m.get(k) for k in keys}
-                    if group_by_shape:
-                        meta[ch]['shape'] = rec['primary'].shape[0]
+        #if self._groups is None:
+            #current_group = []
+            #current_meta = None
+            #groups = [current_group]
+            #for sweep in self.sweeps():
+                ## get selected metadata for grouping sweeps
+                #meta = {}
+                #for ch in sweep.devices:
+                    #rec = sweep[ch]
+                    #m = rec.meta()
+                    #meta[ch] = {k:m.get(k) for k in keys}
+                    #if group_by_shape:
+                        #meta[ch]['shape'] = rec['primary'].shape[0]
 
-                if len(current_group) == 0:
-                    current_group.append(sweep)
-                    current_meta = meta
-                else:
-                    if meta == current_meta:
-                        current_group.append(sweep)
-                    else:
-                        current_group = [sweep]
-                        current_meta = meta
-                        groups.append(current_group)
-            self._groups = [SweepGroup(self, grp) for grp in groups]
-        return self._groups
+                #if len(current_group) == 0:
+                    #current_group.append(sweep)
+                    #current_meta = meta
+                #else:
+                    #if meta == current_meta:
+                        #current_group.append(sweep)
+                    #else:
+                        #current_group = [sweep]
+                        #current_meta = meta
+                        #groups.append(current_group)
+            #self._groups = [SweepGroup(self, grp) for grp in groups]
+        #return self._groups
 
     @staticmethod
     def pack_sweep_data(sweeps):
@@ -164,6 +166,10 @@ class MiesNwb(object):
         """
         dt = datetime(1970,1,1) - datetime(1904,1,1)
         return datetime.utcfromtimestamp(timestamp) - dt
+
+    @property
+    def children(self):
+        return self.contents
 
 
 class MiesTrace(Trace):
@@ -201,7 +207,7 @@ class MiesRecording(PatchClampRecording):
         headstage_id = int(self._hdf_group['electrode_name'].value[0].split('_')[1])
         start = self._hdf_group['starting_time'].value[0]
         
-        PatchClampRecording.__init__(self, device_type='MyltiClamp 700', device_id=headstage_id,
+        PatchClampRecording.__init__(self, device_type='MultiClamp 700', device_id=headstage_id,
                                      sync_recording=sweep, start_time=start)
 
         # update metadata
@@ -215,15 +221,15 @@ class MiesRecording(PatchClampRecording):
     
     @property
     def clamp_mode(self):
-        return 'vc' if self.meta()['notebook']['Clamp Mode'] == 0 else 'ic'
+        return 'vc' if self.meta['notebook']['Clamp Mode'] == 0 else 'ic'
 
     @property
     def holding_potential(self):
-        return self.meta()['notebook']['V-Clamp Holding Level']
+        return self.meta['notebook']['V-Clamp Holding Level']
     
     @property
     def holding_current(self):
-        return self.meta()['notebook']['I-Clamp Holding Level']
+        return self.meta['notebook']['I-Clamp Holding Level']
     
     @property
     def primary_hdf(self):
@@ -255,13 +261,6 @@ class MiesRecording(PatchClampRecording):
                 raise Exception("Cannot find DA channel for headstage %d" % self.device_id)
         return self._da_chan
 
-    def meta(self):
-        """Return a dict of metadata for this recording.
-
-        Keys include 'stim_name', 'start_time', and all parameters recorded in the lab notebook.
-        """
-        return self._meta
-
     def __repr__(self):
         mode = self.clamp_mode
         if mode == 'vc':
@@ -276,62 +275,59 @@ class MiesSyncRecording(SyncRecording):
     """Represents one recorded sweep with multiple channels.
     """
     def __init__(self, nwb, sweep_id):
+        sweep_id = int(sweep_id)
         self._nwb = nwb
         self.sweep_id = sweep_id
-        self._ad_channels = None
-        self._meta = None
+        self._chan_meta = None
         self._traces = None
         self._notebook_entry = None
+
+        # get list of all A/D channels in this sweep
+        chans = []
+        for k in self._nwb.hdf['acquisition/timeseries'].keys():
+            if not k.startswith('data_%05d_' % self.sweep_id):
+                continue
+            chans.append(int(k.split('_')[-1][2:]))
+        self._ad_channels = sorted(chans)
         
         devs = OrderedDict()
-        for ch in self.ad_channels():
+        for ch in self._ad_channels:
             rec = MiesRecording(self, sweep_id, ch)
             devs[rec.device_id] = rec
         SyncRecording.__init__(self, devs)
+        self._meta['sweep_id'] = sweep_id
 
-    def ad_channels(self):
-        """Return a list of AD channels participating in this sweep.
-        """
-        if self._ad_channels is None:
-            chans = []
-            for k in self._nwb.hdf['acquisition/timeseries'].keys():
-                if not k.startswith('data_%05d_' % self.sweep_id):
-                    continue
-                chans.append(int(k.split('_')[-1][2:]))
-            self._ad_channels = sorted(chans)
-        return self._ad_channels
+    #def channel_meta(self, all_chans=False):
+        #"""Return a dict containing the metadata key/value pairs that are shared
+        #across all traces in this sweep.
 
-    def meta(self, all_chans=False):
-        """Return a dict containing the metadata key/value pairs that are shared
-        across all traces in this sweep.
+        #If *all_chans* is True, then instead return a list of values for each meta key.
+        #"""
+        #if all_chans:
+            #m = OrderedDict()
+            #for dev in self.devices:
+                #rec = self[dev]
+                #for k,v in rec.meta().items():
+                    #if k not in m:
+                        #m[k] = []
+                    #m[k].append(v)
+            #return m
 
-        If *all_chans* is True, then instead return a list of values for each meta key.
-        """
-        if all_chans:
-            m = OrderedDict()
-            for dev in self.devices:
-                rec = self[dev]
-                for k,v in rec.meta().items():
-                    if k not in m:
-                        m[k] = []
-                    m[k].append(v)
-            return m
+        #else:
+            #if self._chan_meta is None:
+                #traces = [self.traces()[chan] for chan in self.channels()]
+                #m = traces[0].meta().copy()
+                #for tr in traces[1:]:
+                    #trm = tr.meta()
+                    #rem = []
+                    #for k in m:
+                        #if k not in trm or trm[k] != m[k]:
+                            #rem.append(k)
+                #for k in rem:
+                    #m.pop(k)
 
-        else:
-            if self._meta is None:
-                traces = [self.traces()[chan] for chan in self.channels()]
-                m = traces[0].meta().copy()
-                for tr in traces[1:]:
-                    trm = tr.meta()
-                    rem = []
-                    for k in m:
-                        if k not in trm or trm[k] != m[k]:
-                            rem.append(k)
-                for k in rem:
-                    m.pop(k)
-
-                self._meta = m
-            return self._meta
+                #self._chan_meta = m
+            #return self._chan_meta
         
     #def data(self):
         #"""Return a single array containing recorded data and stimuli from all channels recorded
