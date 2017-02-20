@@ -43,7 +43,7 @@ class SweepView(QtGui.QWidget):
         # collect data
         data = MiesNwb.pack_sweep_data(sweeps)  # returns (sweeps, channels, samples, 2)
         data, stim = data[...,0], data[...,1]  # unpack stim and recordings
-        dt = sweeps[0].recordings[0]['primary'].sample_rate
+        dt = sweeps[0].recordings[0]['primary'].dt
         t = np.arange(data.shape[2]) * dt
 
         # mask for selected channels

@@ -1,6 +1,7 @@
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui, QtCore
 from neuroanalysis.miesnwb import MiesNwb
+from ..signal import SignalBlock
 
 from .sweep_view import SweepView
 from .multipatch_view import MultipatchMatrixView
@@ -254,8 +255,8 @@ class MiesNwbViewer(QtGui.QWidget):
         self.views = []
         self.create_views()
         
-        self.resize(1000, 800)
-        self.hsplit.setSizes([150, 850])
+        self.resize(1400, 800)
+        self.hsplit.setSizes([600, 800])
 
         self.tab_changed()
         self.tabs.currentChanged.connect(self.tab_changed)
@@ -276,7 +277,7 @@ class MiesNwbViewer(QtGui.QWidget):
             self.ptree.clear()
             return
         self.ptree.setParameters(w.params, showTop=False)
-        sweeps = self.selected_sweeps()
+        sweeps = self.checked_sweeps()
         chans = self.selected_channels()
         w.data_selected(sweeps, chans)
         self.analyzer_changed.emit(self)
@@ -317,8 +318,9 @@ class MiesNwbViewer(QtGui.QWidget):
         self.create_views()
 
     def clear_views(self):
-        self.tabs.clear()
-        self.views = []
+        with SignalBlock(self.tabs.currentChanged, self.tab_changed):
+            self.tabs.clear()
+            self.views = []
         
     def create_views(self):
         self.clear_views()

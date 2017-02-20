@@ -64,7 +64,7 @@ class MultipatchMatrixView(QtGui.QWidget):
         # collect data
         data = MiesNwb.pack_sweep_data(sweeps)
         data, stim = data[...,0], data[...,1]  # unpack stim and recordings
-        dt = sweeps[0].recordings[0]['primary'].sample_rate / 1000.
+        dt = sweeps[0].recordings[0]['primary'].dt
 
         # mask for selected channels
         mask = np.array([ch in chans for ch in sweeps[0].devices])
@@ -214,49 +214,4 @@ class MultipatchMatrixView(QtGui.QWidget):
 
             self.plots[0, 0].setXRange(t[0], t[-1])
 
-
-#class PairAnalyzer(QtGui.QWidget):
-    #def __init__(self):
-        #QtGui.QWidget.__init__(self)
-        #self._sweeps = []
-        #self._channels = [None, None]
-        
-        #self.layout = QtGui.QGridLayout()
-        #self.setLayout(self.layout)
-        
-        #self.vsplit = QtGui.QSplitter(QtCore.Qt.Vertical)
-        #self.layout.addWidget(self.vsplit, 0, 0)
-        
-        #self.pre_plot = pg.PlotWidget()
-        #self.post_plot = pg.PlotWidget()
-        #self.vsplit.addWidget(self.pre_plot)
-        #self.vsplit.addWidget(self.post_plot)
-    
-    #def set_channels(self, pre=None, post=None):
-        #if pre is not None:
-            #self._channels[0] = pre
-            
-        #if post is not None:
-            #self._channels[1] = post
-            
-        #self._update_analysis()
-
-    #def data_selected(self, sweeps, channels):
-        #self._sweeps = sweeps
-        #self._update_analysis()
-        
-    #def _update_analysis(self):
-        #self.pre_plot.clear()
-        #self.post_plot.clear()
-        
-        #if len(self.sweeps) == 0 or None in self._channels:
-            #return
-        
-        #pre_chan, post_chan = self._channels
-        
-        #for sweep in self.sweeps:
-            
-            #pre_trace = sweep.traces()[pre_chan]
-            
-        
         

@@ -62,7 +62,7 @@ class FitModel(lmfit.Model):
         fit_params = {}
         model_params = {}
         for k,v in params.items():
-            if k in self.independent_vars or k in ['weights', 'method', 'scale_covar', 'iter_cb']:
+            if k in self.independent_vars or k in ['weights', 'method', 'scale_covar', 'iter_cb', 'verbose', 'fit_kws']:
                 fit_params[k] = v
             else:
                 model_params[k] = v
@@ -159,7 +159,9 @@ class Exp2(FitModel):
     @staticmethod
     def exp2(x, xoffset, yoffset, amp, tau1, tau2):
         xoff = x - xoffset
-        return yoffset + amp * (np.exp(-xoff/tau1) - np.exp(-xoff/tau2))
+        out = yoffset + amp * (np.exp(-xoff/tau1) - np.exp(-xoff/tau2))
+        out[xoff < 0] = yoffset
+        return out
 
 
 class Gaussian(FitModel):
@@ -191,7 +193,7 @@ class Sigmoid(FitModel):
 class Psp(FitModel):
     """PSP-like fitting model defined as the product of rising and decaying exponentials.
     
-    Parameters are xoffset, yoffset, slope, and amp.
+    Parameters are xoffset, yoffset, rise_tau, decay_tau, amp, and rise_power.
     """
     # default guess / bounds:
 

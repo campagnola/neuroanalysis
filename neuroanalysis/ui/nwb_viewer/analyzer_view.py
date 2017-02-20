@@ -64,7 +64,7 @@ class AnalyzerView(QtGui.QWidget):
             for i in range(n_channels):
                 chan = channels[i]
                 trace = sweep[chan]
-                self.plots[i,0].plot(trace['primary'].data, antialias=True)
+                self.plots[i,0].plot(trace['primary'].time_values, trace['primary'].data, antialias=True)
                 
         # label plots
         for i,ch in enumerate(channels):

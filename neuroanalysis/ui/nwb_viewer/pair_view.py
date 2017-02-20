@@ -5,7 +5,7 @@ from ..plot_grid import PlotGrid
 from ..filter import SignalFilter
 from ...data import Trace
 from ...spike_detection import detect_evoked_spike
-
+from ... import fitting
 
 class PairView(QtGui.QWidget):
     """For analyzing pre/post-synaptic pairs.
@@ -49,6 +49,8 @@ class PairView(QtGui.QWidget):
         self._update_plots()
 
     def _update_plots(self):
+        import traceback
+        traceback.print_stack()
         sweeps = self.sweeps
         
         # clear all plots
@@ -63,16 +65,22 @@ class PairView(QtGui.QWidget):
             return
         
         # Iterate over selected channels of all sweeps, plotting traces one at a time
+        # Collect information about pulses and spikes
+        pulses = []
+        spikes = []
+        post_traces = []
         for i,sweep in enumerate(sweeps):
             pre_trace = sweep[pre]['primary']
             post_trace = sweep[post]['primary']
             
-            color = pg.mkColor((i, len(sweeps)*1.3))
+            color = pg.intColor(i, hues=len(sweeps)*1.3, sat=128)
+            color.setAlpha(128)
             
             post_filt = self.filter.process(post_trace)
+            post_traces.append(post_filt)
             
             for trace, plot in [(pre_trace, self.pre_plot), (post_filt, self.post_plot)]:
-                plot.plot(trace.time_values, trace.data, pen=color)
+                plot.plot(trace.time_values, trace.data, pen=color, antialias=True)
                 plot.setLabels(left="Channel %d" % trace.recording.device_id, bottom=("Time", 's'))
 
             # Detect pulse times
@@ -80,17 +88,98 @@ class PairView(QtGui.QWidget):
             sdiff = np.diff(stim)
             on_times = np.argwhere(sdiff > 0)[1:, 0]  # 1: skips test pulse
             off_times = np.argwhere(sdiff < 0)[1:, 0]
+            pulses.append(on_times)
 
             # detect spike times
             spike_inds = []
+            spike_info = []
             for on, off in zip(on_times, off_times):
                 spike = detect_evoked_spike(sweep[pre], [on, off])
+                spike_info.append(spike)
                 if spike is None:
                     spike_inds.append(None)
                 else:
                     spike_inds.append(spike['rise_index'])
+            spikes.append(spike_info)
                     
             dt = pre_trace.dt
             vticks = pg.VTickGroup([x * dt for x in spike_inds if x is not None], yrange=[0.0, 0.2], pen=color)
             self.pre_plot.addItem(vticks)
 
+        # Iterate over spikes, plotting average response
+        all_responses = []
+        avg_responses = []
+        for i in range(len(pulses[0])):
+            responses = []
+            all_responses.append(responses)
+            for j, sweep in enumerate(sweeps):
+                # get the current spike
+                spike = spikes[j][i]
+                if spike is None:
+                    continue
+                
+                # find next spike
+                next_spike = None
+                for sp in spikes[j][i+1:]:
+                    if sp is not None:
+                        next_spike = sp
+                        break
+                    
+                # determine time range for response
+                max_len = int(40e-3 / dt)  # don't take more than 50ms for any response
+                start = spike['rise_index']
+                if next_spike is not None:
+                    stop = min(start + max_len, next_spike['rise_index'])
+                else:
+                    stop = start + max_len
+                    
+                # collect data from this trace
+                trace = post_traces[j]
+                responses.append(trace.data[start:stop])
+                
+            # extend all responses to the same length and take nanmean
+            max_len = max([len(r) for r in responses])
+            for j,resp in enumerate(responses):
+                if len(resp) < max_len:
+                    responses[j] = np.empty(max_len, dtype=resp.dtype)
+                    responses[j][:len(resp)] = resp
+                    responses[j][len(resp):] = np.nan
+            avg = np.nanmean(np.vstack(responses), axis=0)
+            avg_responses.append(avg)
+            
+            # plot average response for this pulse
+            start = np.median([sp[i]['rise_index'] for sp in spikes]) * dt
+            t = np.arange(len(avg)) * dt
+            self.post_plot.plot(t + start, avg, pen='w', antialias=True)
+
+            # fit!
+            #psp = fitting.Psp()
+            #fit = psp.fit(avg, x=t,
+                #xoffset=(2e-3, 1e-3, 5e-3),
+                #yoffset=avg[0],
+                #rise_tau=(2e-3, 50e-6, 10e-3),
+                #decay_tau=(10e-3, 500e-6, 50e-3),
+                #amp=10e-12,
+                #power=(2.0, 'fixed')
+            #)
+            #exp = fitting.Exp()
+            #fit = exp.fit(avg, x=t,
+                #xoffset=(2e-3, 1e-3, 5e-3),
+                #yoffset=avg[0],
+                #tau=(10e-3, 500e-6, 50e-3),
+                #amp=10e-12
+            #)
+            
+            exp = fitting.Exp2()
+            fit = exp.fit(avg, x=t,
+                xoffset=(2e-3, 1e-3, 5e-3),
+                yoffset=avg[0],
+                amp=10e-12,
+                tau1=(2e-3, 50e-6, 10e-3),
+                tau2=(10e-3, 500e-6, 50e-3),
+                fit_kws={'xtol': 1e-3, 'maxfev': 100},
+            )
+            
+            self.post_plot.plot(t+start, fit.eval(), pen={'color':(30, 30, 255), 'width':2, 'dash': [1, 1]}, antialias=True)
+            
+            
