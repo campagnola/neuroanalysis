@@ -4,6 +4,7 @@ import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui, QtCore
 from ..plot_grid import PlotGrid
 from ...miesnwb import MiesNwb
+from ...filter import remove_artifacts
 
 
 class MultipatchMatrixView(QtGui.QWidget):

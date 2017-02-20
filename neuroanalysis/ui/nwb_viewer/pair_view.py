@@ -2,10 +2,11 @@ import numpy as np
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui, QtCore
 from ..plot_grid import PlotGrid
-from ..filter import SignalFilter
+from ..filter import SignalFilter, ArtifactRemover
 from ...data import Trace
 from ...spike_detection import detect_evoked_spike
 from ... import fitting
+
 
 class PairView(QtGui.QWidget):
     """For analyzing pre/post-synaptic pairs.
@@ -29,11 +30,13 @@ class PairView(QtGui.QWidget):
         self.vsplit.addWidget(self.pre_plot)
         self.vsplit.addWidget(self.post_plot)
 
+        self.artifact_remover = ArtifactRemover(user_width=True)
         self.filter = SignalFilter()
         
         self.params = pg.parametertree.Parameter(name='params', type='group', children=[
             {'name': 'pre', 'type': 'list', 'values': []},
             {'name': 'post', 'type': 'list', 'values': []},
+            self.artifact_remover.params,
             self.filter.params,
             
         ])
@@ -49,8 +52,6 @@ class PairView(QtGui.QWidget):
         self._update_plots()
 
     def _update_plots(self):
-        import traceback
-        traceback.print_stack()
         sweeps = self.sweeps
         
         # clear all plots
@@ -73,22 +74,24 @@ class PairView(QtGui.QWidget):
             pre_trace = sweep[pre]['primary']
             post_trace = sweep[post]['primary']
             
-            color = pg.intColor(i, hues=len(sweeps)*1.3, sat=128)
-            color.setAlpha(128)
-            
-            post_filt = self.filter.process(post_trace)
-            post_traces.append(post_filt)
-            
-            for trace, plot in [(pre_trace, self.pre_plot), (post_filt, self.post_plot)]:
-                plot.plot(trace.time_values, trace.data, pen=color, antialias=True)
-                plot.setLabels(left="Channel %d" % trace.recording.device_id, bottom=("Time", 's'))
-
             # Detect pulse times
             stim = sweep[pre]['command'].data
             sdiff = np.diff(stim)
             on_times = np.argwhere(sdiff > 0)[1:, 0]  # 1: skips test pulse
             off_times = np.argwhere(sdiff < 0)[1:, 0]
             pulses.append(on_times)
+
+            # filter data
+            post_filt = self.artifact_remover.process(post_trace, list(on_times) + list(off_times))
+            post_filt = self.filter.process(post_filt)
+            post_traces.append(post_filt)
+            
+            # plot raw data
+            color = pg.intColor(i, hues=len(sweeps)*1.3, sat=128)
+            color.setAlpha(128)
+            for trace, plot in [(pre_trace, self.pre_plot), (post_filt, self.post_plot)]:
+                plot.plot(trace.time_values, trace.data, pen=color, antialias=True)
+                plot.setLabels(left="Channel %d" % trace.recording.device_id, bottom=("Time", 's'))
 
             # detect spike times
             spike_inds = []

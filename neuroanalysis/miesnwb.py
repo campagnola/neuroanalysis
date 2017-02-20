@@ -100,6 +100,9 @@ class MiesNwb(Experiment):
             self._sweeps = [MiesSyncRecording(self, int(sweep_id)) for sweep_id in sorted(list(sweeps))]
         return self._sweeps
     
+    def close(self):
+        self.hdf.close()
+    
     #def sweep_groups(self, keys=('shape', 'stim_name', 'V-Clamp Holding Level', 'Clamp Mode')):
         #"""Return a list of sweep groups--each group contains one or more
         #contiguous sweeps with matching metadata.
