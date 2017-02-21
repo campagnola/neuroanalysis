@@ -224,12 +224,12 @@ class Psp(FitModel):
         return out
 
     @staticmethod
-    def _psp_max_time(rise, decay, rise_power=2.0):
+    def _psp_max_time(rise, decay, rise_power):
         """Return the time from start to peak for a psp with given parameters."""
         return rise * np.log(1 + (decay * rise_power / rise))
 
     @staticmethod
-    def psp_func(x, xoffset, yoffset, rise_tau, decay_tau, amp, rise_power=2.0):
+    def psp_func(x, xoffset, yoffset, rise_tau, decay_tau, amp, rise_power):
         """Function approximating a PSP shape. 
 
         Uses absolute value of both taus, so fits may indicate negative tau.
@@ -240,7 +240,10 @@ class Psp(FitModel):
         max_x = Psp._psp_max_time(rise_tau, decay_tau, rise_power)
         max_val = (1.0 - np.exp(-max_x / rise_tau))**rise_power * np.exp(-max_x / decay_tau)
 
-        return (amp / max_val) * Psp._psp_inner(x-xoffset, rise_tau, decay_tau, rise_power)
+        output = (amp / max_val) * Psp._psp_inner(x-xoffset, rise_tau, decay_tau, rise_power)
+        if not np.all(np.isfinite(output)):
+            raise ValueError("Parameters are invalid: xoffset=%f, yoffset=%f, rise_tau=%f, decay_tau=%f, amp=%f, rise_power=%f, isfinite(x)=%s" % (xoffset, yoffset, rise_tau, decay_tau, amp, rise_power, np.all(np.isfinite(x))))
+        return output
 
 
 class Psp2(FitModel):

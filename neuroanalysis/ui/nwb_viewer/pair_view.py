@@ -1,8 +1,10 @@
 import numpy as np
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui, QtCore
+from collections import OrderedDict
 from ..plot_grid import PlotGrid
 from ..filter import SignalFilter, ArtifactRemover
+from ..baseline import BaselineRemover
 from ...data import Trace
 from ...spike_detection import detect_evoked_spike
 from ... import fitting
@@ -29,14 +31,19 @@ class PairView(QtGui.QWidget):
         self.post_plot.setXLink(self.pre_plot)
         self.vsplit.addWidget(self.pre_plot)
         self.vsplit.addWidget(self.post_plot)
+        
+        self.event_table = pg.TableWidget()
+        self.vsplit.addWidget(self.event_table)
 
         self.artifact_remover = ArtifactRemover(user_width=True)
+        self.baseline_remover = BaselineRemover()
         self.filter = SignalFilter()
         
         self.params = pg.parametertree.Parameter(name='params', type='group', children=[
             {'name': 'pre', 'type': 'list', 'values': []},
             {'name': 'post', 'type': 'list', 'values': []},
             self.artifact_remover.params,
+            self.baseline_remover.params,
             self.filter.params,
             
         ])
@@ -89,6 +96,7 @@ class PairView(QtGui.QWidget):
 
             # filter data
             post_filt = self.artifact_remover.process(post_trace, list(on_times) + list(off_times))
+            post_filt = self.baseline_remover.process(post_filt)
             post_filt = self.filter.process(post_filt)
             post_traces.append(post_filt)
             
@@ -117,7 +125,10 @@ class PairView(QtGui.QWidget):
         # Iterate over spikes, plotting average response
         all_responses = []
         avg_responses = []
+        fits = []
+        fit = None
         for i in range(len(pulses[0])):
+            # get the chunk of each sweep between spikes
             responses = []
             all_responses.append(responses)
             for j, sweep in enumerate(sweeps):
@@ -143,7 +154,12 @@ class PairView(QtGui.QWidget):
                     
                 # collect data from this trace
                 trace = post_traces[j]
-                responses.append(trace.data[start:stop])
+                d = trace.data[start:stop].copy()
+                t = trace.time_values[start:stop]
+                #if fit is not None:
+                    #d -= fit.eval(x=t)
+                    #d += fit.params['yoffset']
+                responses.append(d)
                 
             # extend all responses to the same length and take nanmean
             max_len = max([len(r) for r in responses])
@@ -161,38 +177,33 @@ class PairView(QtGui.QWidget):
             self.post_plot.plot(t + start, avg, pen='w', antialias=True)
 
             # fit!
-            #psp = fitting.Psp()
-            #fit = psp.fit(avg, x=t,
-                #xoffset=(2e-3, 1e-3, 5e-3),
-                #yoffset=avg[0],
-                #rise_tau=(2e-3, 50e-6, 10e-3),
-                #decay_tau=(10e-3, 500e-6, 50e-3),
-                #amp=10e-12,
-                #power=(2.0, 'fixed')
-            #)
-            #exp = fitting.Exp()
-            #fit = exp.fit(avg, x=t,
-                #xoffset=(2e-3, 1e-3, 5e-3),
-                #yoffset=avg[0],
-                #tau=(10e-3, 500e-6, 50e-3),
-                #amp=10e-12
-            #)
-            
-            params = dict(
-                xoffset=(2e-3, 1e-3, 5e-3),
-                yoffset=avg[0],
-                amp=10e-12,
-                tau1=(2e-3, 50e-6, 10e-3),
-                tau2=(10e-3, 500e-6, 50e-3),
-            )
+            params = OrderedDict([
+                ('xoffset', (2e-3, 1e-3, 5e-3)),
+                ('yoffset', avg[0]),
+                ('amp', 10e-12),
+                ('rise_tau', (2e-3, 50e-6, 10e-3)),
+                ('decay_tau', (10e-3, 500e-6, 50e-3)),
+                ('rise_power', (2.0, 'fixed')),
+            ])
             if post_mode == 'ic':
                 params['amp'] = 10e-3
-                params['tau1'] = (5e-3, 50e-6, 20e-3)
-                params['tau2'] = (40e-3, 500e-6, 150e-3)
-                
-            exp = fitting.Exp2()
-            fit = exp.fit(avg, x=t, fit_kws={'xtol': 1e-3, 'maxfev': 100}, **params)
+                params['rise_tau'] = (5e-3, 50e-6, 20e-3)
+                params['decay_tau'] = (40e-3, 500e-6, 150e-3)
             
-            self.post_plot.plot(t+start, fit.eval(), pen={'color':(30, 30, 255), 'width':2, 'dash': [1, 1]}, antialias=True)
+            fit_kws = {'xtol': 1e-3, 'maxfev': 100}
             
+            psp = fitting.Psp()
+            fit = psp.fit(avg, x=t, fit_kws=fit_kws, **params)
+            print(fit.best_values)
+            fits.append(fit)
             
+            pen = {'color':(30, 30, 255), 'width':2, 'dash': [1, 1]}
+            self.post_plot.plot(t+start, fit.eval(), pen=pen, antialias=True)
+            
+        # display fit parameters in table
+        events = []
+        for i,f in enumerate(fits):
+            vals = OrderedDict({'id': i})
+            vals.update(OrderedDict([(k,v) for k,v in f.best_values.items()]))
+            events.append(vals)
+        self.event_table.setData(events)

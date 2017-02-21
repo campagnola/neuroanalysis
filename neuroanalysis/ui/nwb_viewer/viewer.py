@@ -188,8 +188,9 @@ class MiesNwbExplorer(QtGui.QSplitter):
             self.meta_tree.setColumnCount(len(sweep.devices)+1)
             self.meta_tree.setHeaderLabels([""] + [str(dev) for dev in sweep.devices])
             self.meta_tree.clear()
-            self._populate_meta_tree([dev.all_meta for dev in sweep.recordings], self.meta_tree.invisibleRootItem()) 
-            
+            self._populate_meta_tree([dev.all_meta for dev in sweep.recordings], self.meta_tree.invisibleRootItem())
+            for i in range(self.meta_tree.columnCount()):
+                self.meta_tree.resizeColumnToContents(i)
         else:
             self.meta_tree.clear()
         self.selection_changed.emit(sel)

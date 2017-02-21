@@ -32,7 +32,8 @@ def float_mode(data, bins=None):
     values together.
     """
     if bins is None:
-        bins = max(5, int(len(data)/10.))
+        # try to guess on a resonable bin count
+        bins = np.clip(int(len(data)**0.5), 3, 500)
     y, x = np.histogram(data, bins=bins)
     ind = np.argmax(y)
     mode = 0.5 * (x[ind] + x[ind+1])
@@ -59,28 +60,21 @@ def mode_filter(data, window=500, step=None, bins=None):
     remain = len(data) - step*(len(vals)-1) - l2
     chunks.append(np.linspace(vals[-1], vals[-1], remain))
     d2 = np.hstack(chunks)
-    
-    if (hasattr(data, 'implements') and data.implements('MetaArray')):
-        return MetaArray(d2, info=data.infoCopy())
     return d2
     
 
-def histogram_detrend(data, window=500, bins=50, threshold=3.0):
-    """Linear detrend. Works by finding the most common value at the beginning and end of a trace, excluding outliers."""
-    
+def mode_detrend(data, window=500, bins=None, threshold=3.0):
+    """Linear detrend using the mode of the values within a window at the beginning
+    and end of the trace."""
     d1 = data.view(np.ndarray)
-    d2 = [d1[:window], d1[-window:]]
-    v = [0, 0]
-    for i in [0, 1]:
-        d3 = d2[i]
-        stdev = d3.std()
-        mask = abs(d3-np.median(d3)) < stdev*threshold
-        d4 = d3[mask]
-        y, x = np.histogram(d4, bins=bins)
-        ind = np.argmax(y)
-        v[i] = 0.5 * (x[ind] + x[ind+1])
+    ends = [d1[:window], d1[-window:]]
+    y = [float_mode(w, bins=bins) for w in ends]
         
-    base = np.linspace(v[0], v[1], len(data))
-    d3 = data.view(np.ndarray) - base
+    x0 = window / 2.0
+    x1 = len(data) - x0
+    m = (y[1] - y[0]) / (x1 - x0)
+    b0 = y[1] - m * x1
+    b1 = b0 + m * len(data)
     
-    return d3
+    base = np.linspace(b0, b1, len(data))
+    return d1 - base
