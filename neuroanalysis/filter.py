@@ -34,7 +34,19 @@ def remove_artifacts(trace, edges, window):
     data = trace.data.copy()
     t = trace.time_values
     w = window / trace.dt
-    for on, off in edges:
+    
+    # merge together overlapping regions
+    edges.sort()
+    merged_edges = [edges[0]]
+    for on, off in edges[1:]:
+        on1, off1 = merged_edges[-1]
+        if on < off1:
+            merged_edges[-1] = (min(on, on1), max(off, off1))
+        else:
+            merged_edges.append((on, off))
+
+    # remove and replace with linregress
+    for on, off in merged_edges:
         chunkx = t[on-w:off+w]
         chunky = data[on-w:off+w]
         mask = np.ones(len(chunkx), dtype='bool')
@@ -42,7 +54,6 @@ def remove_artifacts(trace, edges, window):
         chunkx = chunkx[mask]
         chunky = chunky[mask]
         slope, intercept = scipy.stats.linregress(chunkx, chunky)[:2]
-        print on, off, w, slope, intercept
         data[on:off] = slope * t[on:off] + intercept
     return trace.copy(data=data)
         

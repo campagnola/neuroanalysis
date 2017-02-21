@@ -64,6 +64,12 @@ class PairView(QtGui.QWidget):
         # If there are no selected sweeps or channels have not been set, return
         if len(sweeps) == 0 or pre == post or pre not in self.channels or post not in self.channels:
             return
+
+        pre_mode = sweeps[0][pre].clamp_mode
+        post_mode = sweeps[0][post].clamp_mode
+        for ch, mode, plot in [(pre, pre_mode, self.pre_plot), (post, post_mode, self.post_plot)]:
+            units = 'A' if mode == 'vc' else 'V'
+            plot.setLabels(left=("Channel %d" % ch, units), bottom=("Time", 's'))
         
         # Iterate over selected channels of all sweeps, plotting traces one at a time
         # Collect information about pulses and spikes
@@ -91,7 +97,6 @@ class PairView(QtGui.QWidget):
             color.setAlpha(128)
             for trace, plot in [(pre_trace, self.pre_plot), (post_filt, self.post_plot)]:
                 plot.plot(trace.time_values, trace.data, pen=color, antialias=True)
-                plot.setLabels(left="Channel %d" % trace.recording.device_id, bottom=("Time", 's'))
 
             # detect spike times
             spike_inds = []
@@ -173,15 +178,20 @@ class PairView(QtGui.QWidget):
                 #amp=10e-12
             #)
             
-            exp = fitting.Exp2()
-            fit = exp.fit(avg, x=t,
+            params = dict(
                 xoffset=(2e-3, 1e-3, 5e-3),
                 yoffset=avg[0],
                 amp=10e-12,
                 tau1=(2e-3, 50e-6, 10e-3),
                 tau2=(10e-3, 500e-6, 50e-3),
-                fit_kws={'xtol': 1e-3, 'maxfev': 100},
             )
+            if post_mode == 'ic':
+                params['amp'] = 10e-3
+                params['tau1'] = (5e-3, 50e-6, 20e-3)
+                params['tau2'] = (40e-3, 500e-6, 150e-3)
+                
+            exp = fitting.Exp2()
+            fit = exp.fit(avg, x=t, fit_kws={'xtol': 1e-3, 'maxfev': 100}, **params)
             
             self.post_plot.plot(t+start, fit.eval(), pen={'color':(30, 30, 255), 'width':2, 'dash': [1, 1]}, antialias=True)
             
