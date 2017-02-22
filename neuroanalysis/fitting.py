@@ -3,6 +3,7 @@ Derived from acq4 and cnmodel code originally developed by Luke Campagnola and P
 Univerity of North Carolina at Chapel Hill.
 """
 import lmfit
+import scipy.optimize
 import numpy as np
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui
@@ -217,11 +218,7 @@ class Psp(FitModel):
 
     @staticmethod
     def _psp_inner(x, rise, decay, power):
-        out = np.zeros(x.shape, x.dtype)
-        mask = x >= 0
-        xvals = x[mask]
-        out[mask] =  (1.0 - np.exp(-xvals / rise))**power * np.exp(-xvals / decay)
-        return out
+        return (1.0 - np.exp(-x / rise))**power * np.exp(-x / decay)
 
     @staticmethod
     def _psp_max_time(rise, decay, rise_power):
@@ -229,21 +226,83 @@ class Psp(FitModel):
         return rise * np.log(1 + (decay * rise_power / rise))
 
     @staticmethod
-    def psp_func(x, xoffset, yoffset, rise_tau, decay_tau, amp, rise_power):
+    def psp_func(x, xoffset, yoffset, rise_time, k, amp, rise_power):
         """Function approximating a PSP shape. 
 
-        Uses absolute value of both taus, so fits may indicate negative tau.
+        Parameters
+        ----------
+        x : array or scalar
+            Time values
+        xoffset : scalar
+            Horizontal shift (positive shifts to the right)
+        yoffset : scalar
+            Vertical offset
+        rise_time : scalar
+            Time from beginning of psp until peak
+        k : scalar
+            A constant that determines the shape of the psp, mostly affecting the falling phase
+            (see notes)
+        amp : scalar
+            The peak value of the psp
+        rise_power : scalar
+            Exponent for the rising phase; larger values result in a slower activation
+        
+        Notes
+        -----
+        This model is mathematically similar to the double exponential used in
+        Exp2 (the only difference being the rising power). However, the parameters
+        are re-expressed to give more direct control over the rise time and peak value.
+        This provides a flatter error surface to fit against, avoiding some of the
+        tradeoff between parameters that Exp2 suffers from.
+        
+        A consequence of this approach as that we cannot use the decay time constant
+        as a direct fit parameter. Instead, it must be computed after the fit
+        is complete.
         """
         # first determine scaling factor needed to achieve correct amplitude
-        rise_tau = abs(rise_tau)
-        decay_tau = abs(decay_tau)
-        max_x = Psp._psp_max_time(rise_tau, decay_tau, rise_power)
-        max_val = (1.0 - np.exp(-max_x / rise_tau))**rise_power * np.exp(-max_x / decay_tau)
+        #rise_tau = abs(rise_tau)
+        #decay_tau = abs(decay_tau)
+        #max_x = Psp._psp_max_time(rise_tau, decay_tau, rise_power)
+        #max_val = (1.0 - np.exp(-max_x / rise_tau))**rise_power * np.exp(-max_x / decay_tau)
 
-        output = (amp / max_val) * Psp._psp_inner(x-xoffset, rise_tau, decay_tau, rise_power)
+        rise_tau = k
+        decay_tau = (rise_tau / rise_power) * (np.exp(rise_time / rise_tau) - 1)
+        max_val = Psp._psp_inner(rise_time, rise_tau, decay_tau, rise_power)
+        #max_val = (1.0 - np.exp(-rise_time / rise_tau))**rise_power * np.exp(-rise_time / decay_tau)
+        
+        xoff = x - xoffset
+        output = np.zeros(xoff.shape, xoff.dtype)
+        mask = xoff >= 0
+        output[mask] = (amp / max_val) * Psp._psp_inner(xoff[mask], rise_tau, decay_tau, rise_power)
+        
         if not np.all(np.isfinite(output)):
             raise ValueError("Parameters are invalid: xoffset=%f, yoffset=%f, rise_tau=%f, decay_tau=%f, amp=%f, rise_power=%f, isfinite(x)=%s" % (xoffset, yoffset, rise_tau, decay_tau, amp, rise_power, np.all(np.isfinite(x))))
         return output
+
+    def fit(self, *args, **kwds):
+        # If decay_tau was given, then we need to get numerical solutions to provide k instead.
+        decay = kwds.pop('decay_tau')
+        if decay is not None:
+            solve_kwds = {k: kwds[k][0] if isinstance(kwds[k], tuple) else kwds[k] for k in ['rise_time', 'rise_power']}
+            if isinstance(decay, tuple):
+                kwds['k'] = tuple([x if x == 'fixed' else self.compute_k(decay_tau=x, **solve_kwds) for x in decay])
+            else:
+                kwds['k'] = self.compute_k(decay_tau=decay, **solve_kwds)
+        return FitModel.fit(self, *args, **kwds)
+            
+    @staticmethod
+    def compute_k(rise_time, rise_power, decay_tau):
+        fn = lambda tr: tr * np.log(1 + (decay_tau * rise_power / tr)) - rise_time
+        return scipy.optimize.fsolve(fn, (rise_time,))[0]
+
+    @staticmethod
+    def decay_tau(**params):
+        """Calculate decay time constant of the psp given its parameters.
+        """
+        tr = params['k']
+        pr = params['rise_power']
+        tmax = params['rise_time']
+        return tr / pr * (np.exp(tmax / tr) - 1)
 
 
 class Psp2(FitModel):

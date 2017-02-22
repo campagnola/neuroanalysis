@@ -8,6 +8,7 @@ from ..baseline import BaselineRemover
 from ...data import Trace
 from ...spike_detection import detect_evoked_spike
 from ... import fitting
+from ...baseline import float_mode
 
 
 class PairView(QtGui.QWidget):
@@ -177,18 +178,22 @@ class PairView(QtGui.QWidget):
             self.post_plot.plot(t + start, avg, pen='w', antialias=True)
 
             # fit!
+            mode = float_mode(avg[:int(1e-3/dt)])
+            sign = -1 if avg.mean() - mode < 0 else 1
             params = OrderedDict([
                 ('xoffset', (2e-3, 1e-3, 5e-3)),
                 ('yoffset', avg[0]),
-                ('amp', 10e-12),
-                ('rise_tau', (2e-3, 50e-6, 10e-3)),
-                ('decay_tau', (10e-3, 500e-6, 50e-3)),
+                ('amp', sign * 10e-12),
+                #('k', (2e-3, 50e-6, 10e-3)),
+                ('rise_time', (2e-3, 50e-6, 10e-3)),
+                ('decay_tau', (4e-3, 500e-6, 50e-3)),
                 ('rise_power', (2.0, 'fixed')),
             ])
             if post_mode == 'ic':
-                params['amp'] = 10e-3
-                params['rise_tau'] = (5e-3, 50e-6, 20e-3)
-                params['decay_tau'] = (40e-3, 500e-6, 150e-3)
+                params['amp'] = sign * 10e-3
+                #params['k'] = (5e-3, 50e-6, 20e-3)
+                params['rise_time'] = (5e-3, 50e-6, 20e-3)
+                params['decay_tau'] = (15e-3, 500e-6, 150e-3)
             
             fit_kws = {'xtol': 1e-3, 'maxfev': 100}
             
@@ -205,5 +210,7 @@ class PairView(QtGui.QWidget):
         for i,f in enumerate(fits):
             vals = OrderedDict({'id': i})
             vals.update(OrderedDict([(k,v) for k,v in f.best_values.items()]))
+            vals['decay_tau'] = psp.decay_tau(**vals)
+            vals['peak_time'] = vals['xoffset'] + vals['rise_time']
             events.append(vals)
         self.event_table.setData(events)
