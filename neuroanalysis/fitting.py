@@ -226,7 +226,7 @@ class Psp(FitModel):
         return rise * np.log(1 + (decay * rise_power / rise))
 
     @staticmethod
-    def psp_func(x, xoffset, yoffset, rise_time, k, amp, rise_power):
+    def psp_func(x, xoffset, yoffset, rise_time, decay_tau, amp, rise_power):
         """Function approximating a PSP shape. 
 
         Parameters
@@ -239,7 +239,7 @@ class Psp(FitModel):
             Vertical offset
         rise_time : scalar
             Time from beginning of psp until peak
-        k : scalar
+        decay_tau : scalar
             A constant that determines the shape of the psp, mostly affecting the falling phase
             (see notes)
         amp : scalar
@@ -254,21 +254,10 @@ class Psp(FitModel):
         are re-expressed to give more direct control over the rise time and peak value.
         This provides a flatter error surface to fit against, avoiding some of the
         tradeoff between parameters that Exp2 suffers from.
-        
-        A consequence of this approach as that we cannot use the decay time constant
-        as a direct fit parameter. Instead, it must be computed after the fit
-        is complete.
         """
-        # first determine scaling factor needed to achieve correct amplitude
-        #rise_tau = abs(rise_tau)
-        #decay_tau = abs(decay_tau)
-        #max_x = Psp._psp_max_time(rise_tau, decay_tau, rise_power)
-        #max_val = (1.0 - np.exp(-max_x / rise_tau))**rise_power * np.exp(-max_x / decay_tau)
-
-        rise_tau = k
+        rise_tau = Psp._compute_rise_tau(rise_time, rise_power, decay_tau)
         decay_tau = (rise_tau / rise_power) * (np.exp(rise_time / rise_tau) - 1)
         max_val = Psp._psp_inner(rise_time, rise_tau, decay_tau, rise_power)
-        #max_val = (1.0 - np.exp(-rise_time / rise_tau))**rise_power * np.exp(-rise_time / decay_tau)
         
         xoff = x - xoffset
         output = np.zeros(xoff.shape, xoff.dtype)
@@ -278,20 +267,9 @@ class Psp(FitModel):
         if not np.all(np.isfinite(output)):
             raise ValueError("Parameters are invalid: xoffset=%f, yoffset=%f, rise_tau=%f, decay_tau=%f, amp=%f, rise_power=%f, isfinite(x)=%s" % (xoffset, yoffset, rise_tau, decay_tau, amp, rise_power, np.all(np.isfinite(x))))
         return output
-
-    def fit(self, *args, **kwds):
-        # If decay_tau was given, then we need to get numerical solutions to provide k instead.
-        decay = kwds.pop('decay_tau')
-        if decay is not None:
-            solve_kwds = {k: kwds[k][0] if isinstance(kwds[k], tuple) else kwds[k] for k in ['rise_time', 'rise_power']}
-            if isinstance(decay, tuple):
-                kwds['k'] = tuple([x if x == 'fixed' else self.compute_k(decay_tau=x, **solve_kwds) for x in decay])
-            else:
-                kwds['k'] = self.compute_k(decay_tau=decay, **solve_kwds)
-        return FitModel.fit(self, *args, **kwds)
             
     @staticmethod
-    def compute_k(rise_time, rise_power, decay_tau):
+    def _compute_rise_tau(rise_time, rise_power, decay_tau):
         fn = lambda tr: tr * np.log(1 + (decay_tau * rise_power / tr)) - rise_time
         return scipy.optimize.fsolve(fn, (rise_time,))[0]
 

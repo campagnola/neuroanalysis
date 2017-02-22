@@ -199,7 +199,6 @@ class PairView(QtGui.QWidget):
             
             psp = fitting.Psp()
             fit = psp.fit(avg, x=t, fit_kws=fit_kws, **params)
-            print(fit.best_values)
             fits.append(fit)
             
             pen = {'color':(30, 30, 255), 'width':2, 'dash': [1, 1]}
@@ -209,8 +208,6 @@ class PairView(QtGui.QWidget):
         events = []
         for i,f in enumerate(fits):
             vals = OrderedDict({'id': i})
-            vals.update(OrderedDict([(k,v) for k,v in f.best_values.items()]))
-            vals['decay_tau'] = psp.decay_tau(**vals)
-            vals['peak_time'] = vals['xoffset'] + vals['rise_time']
+            vals.update(OrderedDict([(k,f.best_values[k]) for k in params]))
             events.append(vals)
         self.event_table.setData(events)
