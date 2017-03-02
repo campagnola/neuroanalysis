@@ -173,6 +173,9 @@ class MiesNwb(Experiment):
     @property
     def children(self):
         return self.contents
+    
+    def __repr__(self):
+        return "<MiesNwb %s>" % self.filename
 
 
 class MiesTrace(Trace):
@@ -214,8 +217,10 @@ class MiesRecording(PatchClampRecording):
                                      sync_recording=sweep, start_time=start)
 
         # update metadata
-        self._meta['stim_name'] = self._hdf_group['stimulus_description'].value[0]
         nb = self._nwb.notebook()[int(self._trace_id[0])][headstage_id]
+        self._meta['stim_name'] = self._hdf_group['stimulus_description'].value[0]
+        self.meta['holding_potential'] = None if nb['V-Clamp Holding Level'] is None else nb['V-Clamp Holding Level'] * 1e-3
+        self.meta['holding_current'] = None if nb['I-Clamp Holding Level'] is None else nb['I-Clamp Holding Level'] * 1e-3
         self._meta['notebook'] = nb
         self._meta['clamp_mode'] = 'vc' if nb['Clamp Mode'] == 0 else 'ic'
 
@@ -226,14 +231,6 @@ class MiesRecording(PatchClampRecording):
     def clamp_mode(self):
         return 'vc' if self.meta['notebook']['Clamp Mode'] == 0 else 'ic'
 
-    @property
-    def holding_potential(self):
-        return self.meta['notebook']['V-Clamp Holding Level']
-    
-    @property
-    def holding_current(self):
-        return self.meta['notebook']['I-Clamp Holding Level']
-    
     @property
     def primary_hdf(self):
         """The raw HDF5 data containing the primary channel recording
@@ -280,7 +277,7 @@ class MiesSyncRecording(SyncRecording):
     def __init__(self, nwb, sweep_id):
         sweep_id = int(sweep_id)
         self._nwb = nwb
-        self.sweep_id = sweep_id
+        self._sweep_id = sweep_id
         self._chan_meta = None
         self._traces = None
         self._notebook_entry = None
@@ -288,7 +285,7 @@ class MiesSyncRecording(SyncRecording):
         # get list of all A/D channels in this sweep
         chans = []
         for k in self._nwb.hdf['acquisition/timeseries'].keys():
-            if not k.startswith('data_%05d_' % self.sweep_id):
+            if not k.startswith('data_%05d_' % sweep_id):
                 continue
             chans.append(int(k.split('_')[-1][2:]))
         self._ad_channels = sorted(chans)
@@ -297,7 +294,7 @@ class MiesSyncRecording(SyncRecording):
         for ch in self._ad_channels:
             rec = MiesRecording(self, sweep_id, ch)
             devs[rec.device_id] = rec
-        SyncRecording.__init__(self, devs)
+        SyncRecording.__init__(self, devs, parent=nwb)
         self._meta['sweep_id'] = sweep_id
 
     #def channel_meta(self, all_chans=False):

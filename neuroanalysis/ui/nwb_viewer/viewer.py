@@ -67,7 +67,7 @@ class MiesNwbExplorer(QtGui.QSplitter):
         if self._nwb is None:
             return
 
-        for sweep in self._nwb.contents:
+        for i,sweep in enumerate(self._nwb.contents):
             recs = sweep.recordings
             stim_name = recs[0].meta['stim_name']
             modes = ''
@@ -83,8 +83,8 @@ class MiesNwbExplorer(QtGui.QSplitter):
                 if holding is None:
                     holdings += '? '
                 else:
-                    holdings += '%0.1f '% holding
-            item = QtGui.QTreeWidgetItem([str(sweep.sweep_id), stim_name, modes, holdings])
+                    holdings += '%0.1f '% (holding*1000)
+            item = QtGui.QTreeWidgetItem([str(i), stim_name, modes, holdings])
             item.setCheckState(0, QtCore.Qt.Unchecked)
             item.data = sweep
             self.sweep_tree.addTopLevelItem(item)

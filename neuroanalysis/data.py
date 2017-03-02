@@ -198,11 +198,6 @@ class RecordingSequence(Container):
         """Return one item (a SyncRecording instance) from the sequence.
         """
 
-    def get_device(self, device):
-        """Return a RecordingSequence with only a single device selected from
-        each recording.
-        """
-
     def sequence_params(self):
         """Return a structure that describes the parameters that are varied across each
         axis of the sequence.
@@ -248,7 +243,8 @@ class SyncRecording(Container):
     This is typically the result of recording from multiple devices at the same time
     (for example, two patch-clamp amplifiers and a camera).
     """
-    def __init__(self, recordings=None):
+    def __init__(self, recordings=None, parent=None):
+        self._parent = parent
         self._recordings = recordings if recordings is not None else OrderedDict()
         Container.__init__(self)
 
@@ -271,12 +267,16 @@ class SyncRecording(Container):
 
     @property
     def recordings(self):
-        """A list of the recordings in this recording.
+        """A list of the recordings in this syncrecording.
         """
         return self._recordings.values()
 
     def data(self):
         return np.concatenate([self[dev].data()[None, :] for dev in self.devices], axis=0)
+
+    @property
+    def parent(self):
+        return self._parent
 
     @property
     def children(self):
@@ -400,13 +400,26 @@ class PatchClampRecording(Recording):
         """The holding potential if the recording is voltage-clamp, or the
         resting membrane potential if the recording is current-clamp.
         """
-        return self._meta['holding_potential']
+        if self.clamp_mode == 'vc':
+            assert self._meta['holding_potential'] is not None
+            return self._meta['holding_potential']
+        else:
+            return self._baseline_value()
 
     @property
     def holding_current(self):
         """The steady-state pipette current applied during this recording.
         """
-        return self._meta['holding_current']
+        if self.clamp_mode == 'ic':
+            return self._meta['holding_current']
+        else:
+            return self._baseline_value()
+
+    def _baseline_value(self):
+        """Return median value of first 10 ms from primary channel data.
+        """
+        t = self['primary']
+        return np.median(t.data[:int(10e-3/t.dt)])
 
     @property
     def nearest_test_pulse(self):
