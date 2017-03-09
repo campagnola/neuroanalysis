@@ -401,7 +401,6 @@ class PatchClampRecording(Recording):
         resting membrane potential if the recording is current-clamp.
         """
         if self.clamp_mode == 'vc':
-            assert self._meta['holding_potential'] is not None
             return self._meta['holding_potential']
         else:
             return self._baseline_value()

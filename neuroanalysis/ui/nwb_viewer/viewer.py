@@ -40,7 +40,7 @@ class MiesNwbExplorer(QtGui.QSplitter):
         self.sweep_tree = QtGui.QTreeWidget()
         self.sweep_tree.setColumnCount(4)
         self.sweep_tree.setHeaderLabels(['ID', 'Stim Name', 'Clamp Mode', 'Holding'])
-        #self.sweep_tree.setSelectionMode(QtGui.QAbstractItemView.ExtendedSelection)
+        self.sweep_tree.setSelectionMode(QtGui.QAbstractItemView.ExtendedSelection)
         self._sel_box_layout.addWidget(self.sweep_tree)
         
         self.channel_list = QtGui.QListWidget()
@@ -149,7 +149,7 @@ class MiesNwbExplorer(QtGui.QSplitter):
                 self.channel_list.takeItem(0)
             
             # bail out if nothing is selected
-            sel = self.checked_items()
+            sel = self.selection()
             if len(sel) == 0:
                 return
             
@@ -193,6 +193,7 @@ class MiesNwbExplorer(QtGui.QSplitter):
                 self.meta_tree.resizeColumnToContents(i)
         else:
             self.meta_tree.clear()
+        self._update_channel_list()
         self.selection_changed.emit(sel)
 
     def _populate_meta_tree(self, meta, root):
@@ -208,7 +209,6 @@ class MiesNwbExplorer(QtGui.QSplitter):
     def _tree_item_changed(self, item, col):
         if col != 0:
             return
-        self._update_channel_list()
         self.check_state_changed.emit(self)
         
     def _channel_list_changed(self, item):
@@ -239,7 +239,7 @@ class MiesNwbViewer(QtGui.QWidget):
         self.hsplit.addWidget(self.vsplit)
 
         self.explorer = MiesNwbExplorer(self.nwb)
-        self.explorer.check_state_changed.connect(self.data_selection_changed)
+        self.explorer.selection_changed.connect(self.data_selection_changed)
         self.explorer.channels_changed.connect(self.data_selection_changed)
         self.vsplit.addWidget(self.explorer)
 
@@ -267,7 +267,7 @@ class MiesNwbViewer(QtGui.QWidget):
         self.explorer.set_nwb(nwb)
 
     def data_selection_changed(self):
-        sweeps = self.checked_sweeps()
+        sweeps = self.selected_sweeps()
         chans = self.selected_channels()
         with pg.BusyCursor():
             self.tabs.currentWidget().data_selected(sweeps, chans)
@@ -278,7 +278,7 @@ class MiesNwbViewer(QtGui.QWidget):
             self.ptree.clear()
             return
         self.ptree.setParameters(w.params, showTop=False)
-        sweeps = self.checked_sweeps()
+        sweeps = self.selected_sweeps()
         chans = self.selected_channels()
         w.data_selected(sweeps, chans)
         self.analyzer_changed.emit(self)
