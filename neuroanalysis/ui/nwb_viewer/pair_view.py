@@ -182,15 +182,15 @@ class PairView(QtGui.QWidget):
             avg_responses.append(avg)
             
             # plot average response for this pulse
-            start = np.median([sp[i]['rise_index'] for sp in spikes]) * dt
+            start = np.median([sp[i]['rise_index'] for sp in spikes if sp[i] is not None]) * dt
             t = np.arange(len(avg)) * dt
-            self.response_plots[0,i].plot(t+start, avg, pen='w', antialias=True)
+            self.response_plots[0,i].plot(t, avg, pen='w', antialias=True)
 
             # fit!
             fit = self.fit_psp(avg, t, dt, post_mode)
             fits.append(fit)
             
-            self.response_plots[0,i].plot(t+start, fit.eval(), pen=fit_pen, antialias=True)
+            self.response_plots[0,i].plot(t, fit.eval(), pen=fit_pen, antialias=True)
             
         # display global average
         global_avg = ragged_mean(avg_responses, method='clip')
@@ -202,6 +202,8 @@ class PairView(QtGui.QWidget):
         # display fit parameters in table
         events = []
         for i,f in enumerate(fits):
+            if f is None:
+                continue
             vals = OrderedDict({'id': i})
             vals.update(OrderedDict([(k,f.best_values[k]) for k in f.params.keys()]))
             events.append(vals)
