@@ -9,6 +9,7 @@ from ...data import Trace
 from ...spike_detection import detect_evoked_spike
 from ... import fitting
 from ...baseline import float_mode
+from ...stats import ragged_mean
 
 
 class PairView(QtGui.QWidget):
@@ -33,6 +34,9 @@ class PairView(QtGui.QWidget):
         self.vsplit.addWidget(self.pre_plot)
         self.vsplit.addWidget(self.post_plot)
         
+        self.response_plots = PlotGrid()
+        self.vsplit.addWidget(self.response_plots)
+        
         self.event_table = pg.TableWidget()
         self.vsplit.addWidget(self.event_table)
 
@@ -46,6 +50,7 @@ class PairView(QtGui.QWidget):
             self.artifact_remover.params,
             self.baseline_remover.params,
             self.filter.params,
+            {'name': 'time constant', 'type': 'float', 'suffix': 's', 'siPrefix': True, 'value': 10e-3, 'dec': True, 'minStep': 100e-6}
             
         ])
         self.params.sigTreeStateChanged.connect(self._update_plots)
@@ -105,7 +110,7 @@ class PairView(QtGui.QWidget):
             color = pg.intColor(i, hues=len(sweeps)*1.3, sat=128)
             color.setAlpha(128)
             for trace, plot in [(pre_trace, self.pre_plot), (post_filt, self.post_plot)]:
-                plot.plot(trace.time_values, trace.data, pen=color, antialias=True)
+                plot.plot(trace.time_values, trace.data, pen=color, antialias=False)
 
             # detect spike times
             spike_inds = []
@@ -128,12 +133,25 @@ class PairView(QtGui.QWidget):
         avg_responses = []
         fits = []
         fit = None
-        for i in range(len(pulses[0])):
+        
+        npulses = max(map(len, pulses))
+        self.response_plots.clear()
+        self.response_plots.set_shape(1, npulses+1) # 1 extra for global average
+        self.response_plots.setYLink(self.response_plots[0,0])
+        for i in range(1, npulses+1):
+            self.response_plots[0,i].hideAxis('left')
+        units = 'A' if post_mode == 'vc' else 'V'
+        self.response_plots[0, 0].setLabels(left=("Averaged events (Channel %d)" % post, units))
+        
+        fit_pen = {'color':(30, 30, 255), 'width':2, 'dash': [1, 1]}
+        for i in range(npulses):
             # get the chunk of each sweep between spikes
             responses = []
             all_responses.append(responses)
             for j, sweep in enumerate(sweeps):
                 # get the current spike
+                if i >= len(spikes[j]):
+                    continue
                 spike = spikes[j][i]
                 if spike is None:
                     continue
@@ -156,58 +174,58 @@ class PairView(QtGui.QWidget):
                 # collect data from this trace
                 trace = post_traces[j]
                 d = trace.data[start:stop].copy()
-                t = trace.time_values[start:stop]
-                #if fit is not None:
-                    #d -= fit.eval(x=t)
-                    #d += fit.params['yoffset']
                 responses.append(d)
                 
             # extend all responses to the same length and take nanmean
-            max_len = max([len(r) for r in responses])
-            for j,resp in enumerate(responses):
-                if len(resp) < max_len:
-                    responses[j] = np.empty(max_len, dtype=resp.dtype)
-                    responses[j][:len(resp)] = resp
-                    responses[j][len(resp):] = np.nan
-            avg = np.nanmean(np.vstack(responses), axis=0)
+            avg = ragged_mean(responses, method='clip')
+            avg -= float_mode(avg[:int(1e-3/dt)])
             avg_responses.append(avg)
             
             # plot average response for this pulse
             start = np.median([sp[i]['rise_index'] for sp in spikes]) * dt
             t = np.arange(len(avg)) * dt
-            self.post_plot.plot(t + start, avg, pen='w', antialias=True)
+            self.response_plots[0,i].plot(t+start, avg, pen='w', antialias=True)
 
             # fit!
-            mode = float_mode(avg[:int(1e-3/dt)])
-            sign = -1 if avg.mean() - mode < 0 else 1
-            params = OrderedDict([
-                ('xoffset', (2e-3, 1e-3, 5e-3)),
-                ('yoffset', avg[0]),
-                ('amp', sign * 10e-12),
-                #('k', (2e-3, 50e-6, 10e-3)),
-                ('rise_time', (2e-3, 50e-6, 10e-3)),
-                ('decay_tau', (4e-3, 500e-6, 50e-3)),
-                ('rise_power', (2.0, 'fixed')),
-            ])
-            if post_mode == 'ic':
-                params['amp'] = sign * 10e-3
-                #params['k'] = (5e-3, 50e-6, 20e-3)
-                params['rise_time'] = (5e-3, 50e-6, 20e-3)
-                params['decay_tau'] = (15e-3, 500e-6, 150e-3)
-            
-            fit_kws = {'xtol': 1e-3, 'maxfev': 100}
-            
-            psp = fitting.Psp()
-            fit = psp.fit(avg, x=t, fit_kws=fit_kws, **params)
+            fit = self.fit_psp(avg, t, dt, post_mode)
             fits.append(fit)
             
-            pen = {'color':(30, 30, 255), 'width':2, 'dash': [1, 1]}
-            self.post_plot.plot(t+start, fit.eval(), pen=pen, antialias=True)
+            self.response_plots[0,i].plot(t+start, fit.eval(), pen=fit_pen, antialias=True)
+            
+        # display global average
+        global_avg = ragged_mean(avg_responses, method='clip')
+        t = np.arange(len(global_avg)) * dt
+        self.response_plots[0,-1].plot(t, global_avg, pen='w', antialias=True)
+        global_fit = self.fit_psp(global_avg, t, dt, post_mode)
+        self.response_plots[0,-1].plot(t, global_fit.eval(), pen=fit_pen, antialias=True)
             
         # display fit parameters in table
         events = []
         for i,f in enumerate(fits):
             vals = OrderedDict({'id': i})
-            vals.update(OrderedDict([(k,f.best_values[k]) for k in params]))
+            vals.update(OrderedDict([(k,f.best_values[k]) for k in f.params.keys()]))
             events.append(vals)
         self.event_table.setData(events)
+
+    def fit_psp(self, data, t, dt, clamp_mode):
+        mode = float_mode(data[:int(1e-3/dt)])
+        sign = -1 if data.mean() - mode < 0 else 1
+        params = OrderedDict([
+            ('xoffset', (2e-3, 1e-3, 5e-3)),
+            ('yoffset', data[0]),
+            ('amp', sign * 10e-12),
+            #('k', (2e-3, 50e-6, 10e-3)),
+            ('rise_time', (2e-3, 50e-6, 10e-3)),
+            ('decay_tau', (4e-3, 500e-6, 50e-3)),
+            ('rise_power', (2.0, 'fixed')),
+        ])
+        if clamp_mode == 'ic':
+            params['amp'] = sign * 10e-3
+            #params['k'] = (5e-3, 50e-6, 20e-3)
+            params['rise_time'] = (5e-3, 50e-6, 20e-3)
+            params['decay_tau'] = (15e-3, 500e-6, 150e-3)
+        
+        fit_kws = {'xtol': 1e-3, 'maxfev': 100}
+        
+        psp = fitting.Psp()
+        return psp.fit(data, x=t, fit_kws=fit_kws, **params)
