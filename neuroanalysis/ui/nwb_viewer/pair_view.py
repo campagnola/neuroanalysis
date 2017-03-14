@@ -19,6 +19,9 @@ class PairView(QtGui.QWidget):
         self.sweeps = []
         self.channels = []
 
+        self.current_event_set = None
+        self.event_sets = []
+
         QtGui.QWidget.__init__(self, parent)
 
         self.layout = QtGui.QGridLayout()
@@ -30,15 +33,46 @@ class PairView(QtGui.QWidget):
         
         self.pre_plot = pg.PlotWidget()
         self.post_plot = pg.PlotWidget()
+        for plt in (self.pre_plot, self.post_plot):
+            plt.setClipToView(True)
+            plt.setDownsampling(True, True, 'peak')
+        
         self.post_plot.setXLink(self.pre_plot)
         self.vsplit.addWidget(self.pre_plot)
         self.vsplit.addWidget(self.post_plot)
         
         self.response_plots = PlotGrid()
         self.vsplit.addWidget(self.response_plots)
+
+        self.event_splitter = QtGui.QSplitter(QtCore.Qt.Horizontal)
+        self.vsplit.addWidget(self.event_splitter)
         
         self.event_table = pg.TableWidget()
-        self.vsplit.addWidget(self.event_table)
+        self.event_splitter.addWidget(self.event_table)
+        
+        self.event_widget = QtGui.QWidget()
+        self.event_widget_layout = QtGui.QGridLayout()
+        self.event_widget.setLayout(self.event_widget_layout)
+        self.event_splitter.addWidget(self.event_widget)
+        
+        self.event_splitter.setSizes([600, 100])
+        
+        self.event_set_list = QtGui.QListWidget()
+        self.event_widget_layout.addWidget(self.event_set_list, 0, 0, 1, 2)
+        self.event_set_list.addItem("current")
+        self.event_set_list.itemSelectionChanged.connect(self.event_set_selected)
+        
+        self.add_set_btn = QtGui.QPushButton('add')
+        self.event_widget_layout.addWidget(self.add_set_btn, 1, 0, 1, 1)
+        self.add_set_btn.clicked.connect(self.add_set_clicked)
+        self.remove_set_btn = QtGui.QPushButton('del')
+        self.event_widget_layout.addWidget(self.remove_set_btn, 1, 1, 1, 1)
+        self.remove_set_btn.clicked.connect(self.remove_set_clicked)
+        self.fit_btn = QtGui.QPushButton('fit all')
+        self.event_widget_layout.addWidget(self.fit_btn, 2, 0, 1, 2)
+        self.fit_btn.clicked.connect(self.fit_clicked)
+
+        self.fit_plot = PlotGrid()
 
         self.artifact_remover = ArtifactRemover(user_width=True)
         self.baseline_remover = BaselineRemover()
@@ -66,6 +100,8 @@ class PairView(QtGui.QWidget):
 
     def _update_plots(self):
         sweeps = self.sweeps
+        self.current_event_set = None
+        self.event_table.clear()
         
         # clear all plots
         self.pre_plot.clear()
@@ -204,10 +240,13 @@ class PairView(QtGui.QWidget):
         for i,f in enumerate(fits):
             if f is None:
                 continue
-            vals = OrderedDict({'id': i})
+            spt = [s[i]['peak_index'] * dt for s in spikes]
+            vals = OrderedDict([('id', i), ('spike_time', np.mean(spt)), ('spike_stdev', np.std(spt))])
             vals.update(OrderedDict([(k,f.best_values[k]) for k in f.params.keys()]))
             events.append(vals)
-        self.event_table.setData(events)
+        self.current_event_set = (pre, post, events, sweeps)
+        self.event_set_list.setCurrentRow(0)
+        self.event_set_selected()
 
     def fit_psp(self, data, t, dt, clamp_mode):
         mode = float_mode(data[:int(1e-3/dt)])
@@ -231,3 +270,74 @@ class PairView(QtGui.QWidget):
         
         psp = fitting.Psp()
         return psp.fit(data, x=t, fit_kws=fit_kws, **params)
+
+    def add_set_clicked(self):
+        if self.current_event_set is None:
+            return
+        ces = self.current_event_set
+        self.event_sets.append(ces)
+        item = QtGui.QListWidgetItem("%d -> %d" % (ces[0], ces[1]))
+        self.event_set_list.addItem(item)
+        item.event_set = ces
+        
+    def remove_set_clicked(self):
+        if self.event_set_list.currentRow() == 0:
+            return
+        sel = self.event_set_list.takeItem(self.event_set_list.currentRow())
+        self.event_sets.remove(sel.event_set)
+        
+    def event_set_selected(self):
+        sel = self.event_set_list.selectedItems()[0]
+        if sel.text() == "current":
+            self.event_table.setData(self.current_event_set[2])
+        else:
+            self.event_table.setData(sel.event_set[2])
+    
+    def fit_clicked(self):
+        from ...synaptic_release import ReleaseModel
+        
+        self.fit_plot.clear()
+        self.fit_plot.show()
+        
+        n_sets = len(self.event_sets)
+        self.fit_plot.set_shape(n_sets, 1)
+        for i in range(n_sets):
+            self.fit_plot[i,0].setXLink(self.fit_plot[0, 0])
+        
+        spike_sets = []
+        for i,evset in enumerate(self.event_sets):
+            x = np.array([ev['spike_time'] for ev in evset[2]])
+            y = np.array([ev['amp'] for ev in evset[2]])
+            x -= x[0]
+            x *= 1000
+            y /= y[0]
+            spike_sets.append((x, y))
+            
+            self.fit_plot[i,0].plot(x/1000., y, pen=None, symbol='o')
+            
+        model = ReleaseModel()
+        dynamics_types = ['Dep', 'Fac', 'UR', 'SMR', 'DSR']
+        for k in dynamics_types:
+            model.Dynamics[k] = 0
+        
+        fit_params = []
+        with pg.ProgressDialog("Fitting..", 0, len(dynamics_types)) as dlg:
+            for k in dynamics_types:
+                model.Dynamics[k] = 1
+                fit_params.append(model.run_fit(spike_sets))
+                dlg += 1
+                if dlg.wasCanceled():
+                    return
+        
+        max_color = len(fit_params)*1.5
+
+        for i,params in enumerate(fit_params):
+            for j,spikes in enumerate(spike_sets):
+                x, y = spikes
+                t = np.linspace(0, x.max(), 1000)
+                output = model.eval(x, params.values())
+                y = output[:,1]
+                x = output[:,0]/1000.
+                self.fit_plot[j,0].plot(x, y, pen=(i,max_color))
+
+        raise Exception()
