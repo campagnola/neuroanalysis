@@ -301,6 +301,12 @@ class PairView(QtGui.QWidget):
         
         n_sets = len(self.event_sets)
         self.fit_plot.set_shape(n_sets, 1)
+        l = self.fit_plot[0, 0].legend
+        if l is not None:
+            l.setParentItem(None)
+            self.fit_plot[0, 0].legend = None
+        self.fit_plot[0, 0].addLegend()
+        
         for i in range(n_sets):
             self.fit_plot[i,0].setXLink(self.fit_plot[0, 0])
         
@@ -321,7 +327,7 @@ class PairView(QtGui.QWidget):
             model.Dynamics[k] = 0
         
         fit_params = []
-        with pg.ProgressDialog("Fitting..", 0, len(dynamics_types)) as dlg:
+        with pg.ProgressDialog("Fitting release model..", 0, len(dynamics_types)) as dlg:
             for k in dynamics_types:
                 model.Dynamics[k] = 1
                 fit_params.append(model.run_fit(spike_sets))
@@ -338,6 +344,5 @@ class PairView(QtGui.QWidget):
                 output = model.eval(x, params.values())
                 y = output[:,1]
                 x = output[:,0]/1000.
-                self.fit_plot[j,0].plot(x, y, pen=(i,max_color))
+                self.fit_plot[j,0].plot(x, y, pen=(i,max_color), name=dynamics_types[i])
 
-        raise Exception()
