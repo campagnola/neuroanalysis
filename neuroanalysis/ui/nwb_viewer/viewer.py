@@ -4,9 +4,7 @@ from neuroanalysis.miesnwb import MiesNwb
 from ..signal import SignalBlock
 
 from .sweep_view import SweepView
-from .multipatch_view import MultipatchMatrixView
 from .analyzer_view import AnalyzerView
-from .pair_view import PairView
 
 
 class MiesNwbExplorer(QtGui.QSplitter):
@@ -22,14 +20,6 @@ class MiesNwbExplorer(QtGui.QSplitter):
 
         self._nwb = None
         self._channel_selection = {}
-
-        # self.menu = QtGui.QMenuBar()
-        # self.layout.addWidget(self.menu, 0, 0)
-
-        # self.show_menu = QtGui.QMenu("Show")
-        # self.menu.addMenu(self.show_menu)
-        # self.groupby_menu = QtGui.QMenu("Group by")
-        # self.menu.addMenu(self.groupby_menu)
 
         self._sel_box = QtGui.QWidget()
         self._sel_box_layout = QtGui.QHBoxLayout()
@@ -327,9 +317,7 @@ class MiesNwbViewer(QtGui.QWidget):
         self.clear_views()
         self.views = [
             ('Sweep', SweepView(self)),
-            ('Matrix', MultipatchMatrixView(self)),
             ('Sandbox', AnalyzerView(self)),
-            ('Pair', PairView(self)),
         ]
 
         for name, view in self.views:
