@@ -262,7 +262,7 @@ class Psp(FitModel):
         xoff = x - xoffset
         output = np.zeros(xoff.shape, xoff.dtype)
         mask = xoff >= 0
-        output[mask] = (amp / max_val) * Psp._psp_inner(xoff[mask], rise_tau, decay_tau, rise_power)
+        output[mask] = yoffset + (amp / max_val) * Psp._psp_inner(xoff[mask], rise_tau, decay_tau, rise_power)
         
         if not np.all(np.isfinite(output)):
             raise ValueError("Parameters are invalid: xoffset=%f, yoffset=%f, rise_tau=%f, decay_tau=%f, amp=%f, rise_power=%f, isfinite(x)=%s" % (xoffset, yoffset, rise_tau, decay_tau, amp, rise_power, np.all(np.isfinite(x))))
