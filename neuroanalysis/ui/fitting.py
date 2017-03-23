@@ -1,8 +1,10 @@
 from collections import OrderedDict
 import numpy as np
+import scipy.stats
 from pyqtgraph.Qt import QtGui, QtCore
 import pyqtgraph as pg
 import pyqtgraph.parametertree
+import lmfit.minimizer 
 
 
 class FitExplorer(QtGui.QWidget):
@@ -27,8 +29,12 @@ class FitExplorer(QtGui.QWidget):
                 dict(name='initial parameters', type='group'),
                 dict(name='constraints', type='group'),
                 dict(name='fit', type='action'),
+                dict(name='fit method', type='list', values=['leastsq', 'least_squares', 'brute'] + list(lmfit.minimizer.SCALAR_METHODS.keys())),
                 dict(name='fit parameters', type='group'),
-                dict(name='chi squared', type='float', writable=False),
+                dict(name='chi squared', type='float', readonly=True),
+                dict(name='normalized RMS error', type='float', readonly=True),
+                dict(name='pearson r', type='float', readonly=True),
+                dict(name='pearson p', type='float', readonly=True),
             ])
         
         for k in self.model.param_names:
@@ -50,27 +56,51 @@ class FitExplorer(QtGui.QWidget):
         self.params.sigTreeStateChanged.connect(self.update_plots)
         self.params.child('fit').sigActivated.connect(self.refit)
 
-    def set_fit(self, fit):
+    def set_fit(self, fit, update_params=True):
         self.fit = fit
-        self.data = fit.data
-        self.args = fit.userkws
-        self.model = fit.model
-        self._fill_init_params(self.params.child('initial parameters'), self.fit)
-        self._fill_constraints(self.params.child('constraints'), self.fit)
+        if update_params:
+            self.data = fit.data
+            self.args = fit.userkws
+            self.model = fit.model
+            self._fill_init_params(self.params.child('initial parameters'), self.fit)
+            self._fill_constraints(self.params.child('constraints'), self.fit)
         self._fill_params(self.params.child('fit parameters'), self.fit)
+        self._update_fit_stats()
+        
+    def _update_fit_stats(self):
         self.params['chi squared'] = self.fit.chisqr
+
+        args = self.args.copy()
+        args.update(self.fit_params())
+        fity = self.model.eval(y=self.data, **args)
+        residual = self.data - fity
+        rmse = (residual**2 / residual.size).sum() ** 0.5
+        self.params['normalized RMS error'] = rmse / self.data.std()
+        
+        r, p = scipy.stats.pearsonr(self.data, fity)
+        self.params['pearson r'] = r
+        self.params['pearson p'] = p
         
     def update_plots(self):
         self.plot.clear()
 
         args = self.args.copy()
-        self.plot.plot(args['x'], self.data)
+        self.plot.plot(args['x'], self.data, antialias=True)
 
         args.update(self.initial_params())
-        self.plot.plot(args['x'], self.model.eval(y=self.data, **args), pen='y')
+        self.plot.plot(args['x'], self.model.eval(y=self.data, **args), pen='y', antialias=True)
 
-        args.update(self.fit_params())
-        self.plot.plot(args['x'], self.model.eval(y=self.data, **args), pen='g')
+        if self.fit is not None:
+            args.update(self.fit_params())
+            fity = self.model.eval(y=self.data, **args)
+            self.plot.plot(args['x'], fity, pen='g', antialias=True)
+            err = self.fit.eval_uncertainty()
+            c1 = pg.PlotCurveItem(args['x'], fity-err)
+            c2 = pg.PlotCurveItem(args['x'], fity+err)
+            fill = pg.FillBetweenItem(c1, c2, pg.mkBrush((0, 255, 0, 50)))
+            self.plot.addItem(fill, ignoreBounds=True)
+            fill.setZValue(-1)
+            self._update_fit_stats()
 
     def fit_params(self):
         params = OrderedDict()
@@ -93,9 +123,7 @@ class FitExplorer(QtGui.QWidget):
     def refit(self):
         args = self.args.copy()
         args.update(self.constraints())
-        self.fit = self.model.fit(self.data, **args)
-        self._fill_params(self.params.child('fit parameters'), self.fit)
-        self.params['chi squared'] = self.fit.chisqr
+        self.set_fit(self.model.fit(self.data, method=self.params['fit method'], **args), update_params=False)
         
     def _fill_params(self, root, fit):
         for k in self.model.param_names:

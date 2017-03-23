@@ -260,7 +260,8 @@ class Psp(FitModel):
         max_val = Psp._psp_inner(rise_time, rise_tau, decay_tau, rise_power)
         
         xoff = x - xoffset
-        output = np.zeros(xoff.shape, xoff.dtype)
+        output = np.empty(xoff.shape, xoff.dtype)
+        output[:] = yoffset
         mask = xoff >= 0
         output[mask] = yoffset + (amp / max_val) * Psp._psp_inner(xoff[mask], rise_tau, decay_tau, rise_power)
         
