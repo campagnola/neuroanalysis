@@ -6,12 +6,12 @@ import pyqtgraph.parametertree
 
 
 class FitExplorer(QtGui.QWidget):
-    def __init__(self, model, data=None, args=None, fit=None):
+    def __init__(self, fit=None, model=None, data=None, args=None):
         QtGui.QWidget.__init__(self)
-        self.model = model
+        self.model = model if model is not None else fit.model
+        self.args = args
+        self.data = data
         self.fit = None
-        self.data = data if data is not None else fit.data
-        self.args = args if args is not None else fit.userkws
         
         self.layout = QtGui.QGridLayout()
         self.setLayout(self.layout)
@@ -28,6 +28,7 @@ class FitExplorer(QtGui.QWidget):
                 dict(name='constraints', type='group'),
                 dict(name='fit', type='action'),
                 dict(name='fit parameters', type='group'),
+                dict(name='chi squared', type='float', writable=False),
             ])
         
         for k in self.model.param_names:
@@ -51,9 +52,13 @@ class FitExplorer(QtGui.QWidget):
 
     def set_fit(self, fit):
         self.fit = fit
+        self.data = fit.data
+        self.args = fit.userkws
+        self.model = fit.model
         self._fill_init_params(self.params.child('initial parameters'), self.fit)
         self._fill_constraints(self.params.child('constraints'), self.fit)
         self._fill_params(self.params.child('fit parameters'), self.fit)
+        self.params['chi squared'] = self.fit.chisqr
         
     def update_plots(self):
         self.plot.clear()
@@ -90,6 +95,7 @@ class FitExplorer(QtGui.QWidget):
         args.update(self.constraints())
         self.fit = self.model.fit(self.data, **args)
         self._fill_params(self.params.child('fit parameters'), self.fit)
+        self.params['chi squared'] = self.fit.chisqr
         
     def _fill_params(self, root, fit):
         for k in self.model.param_names:
