@@ -33,7 +33,7 @@ def remove_artifacts(trace, edges, window):
     """
     data = trace.data.copy()
     t = trace.time_values
-    w = window / trace.dt
+    w = int(window / trace.dt)
     
     # merge together overlapping regions
     edges.sort()
