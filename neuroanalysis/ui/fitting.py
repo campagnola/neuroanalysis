@@ -5,6 +5,7 @@ from pyqtgraph.Qt import QtGui, QtCore
 import pyqtgraph as pg
 import pyqtgraph.parametertree
 import lmfit.minimizer 
+import sys
 
 
 class FitExplorer(QtGui.QWidget):
@@ -94,12 +95,18 @@ class FitExplorer(QtGui.QWidget):
             args.update(self.fit_params())
             fity = self.model.eval(y=self.data, **args)
             self.plot.plot(args['x'], fity, pen='g', antialias=True)
-            err = self.fit.eval_uncertainty()
-            c1 = pg.PlotCurveItem(args['x'], fity-err)
-            c2 = pg.PlotCurveItem(args['x'], fity+err)
-            fill = pg.FillBetweenItem(c1, c2, pg.mkBrush((0, 255, 0, 50)))
-            self.plot.addItem(fill, ignoreBounds=True)
-            fill.setZValue(-1)
+            if hasattr(self.fit, 'eval_uncertainty'):
+                # added in 0.9.6
+                try:
+                    err = self.fit.eval_uncertainty()
+                    c1 = pg.PlotCurveItem(args['x'], fity-err)
+                    c2 = pg.PlotCurveItem(args['x'], fity+err)
+                    fill = pg.FillBetweenItem(c1, c2, pg.mkBrush((0, 255, 0, 50)))
+                    self.plot.addItem(fill, ignoreBounds=True)
+                    fill.setZValue(-1)
+                except Exception:
+                    # eval_uncertainty is broken in some versions
+                    pass
             self._update_fit_stats()
 
     def fit_params(self):
