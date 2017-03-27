@@ -35,6 +35,8 @@ class EventDetector(QtCore.QObject):
             {'name': 'gaussian sigma', 'type': 'float', 'value': 200e-6, 'bounds': [0, None], 'suffix': 's', 'siPrefix': True, 'dec': True, 'minStep': 10e-6},
             {'name': 'deconv const', 'type': 'float', 'value': 0.01, 'suffix': 's', 'siPrefix': True, 'dec': True, 'minStep': 1e-4},
             {'name': 'threshold', 'type': 'float', 'value': 0.05, 'dec': True, 'minStep': 1e-12},
+            {'name': 'gamma', 'type': 'float', 'bounds': [0, 1], 'value': 0.96},
+            {'name': 'lambda', 'type': 'float', 'value': 1},
         ])
         self.sig_plot = None
         self.deconv_plot = None
@@ -114,6 +116,28 @@ class EventDetector(QtCore.QObject):
                 self.sig_trace.setData(t, y)
                 self.vticks.setXVals(t[self.events['index']])
                 self.vticks.update()  # this should not be needed..
+                
+                
+                if not hasattr(self, 'vticks2'):
+                    self.vticks2 = pg.VTickGroup(yrange=[0, 0.2], pen='r')
+                    self.sig_plot.addItem(self.vticks2)
+                    import rpy2.robjects.packages
+                    import rpy2.robjects.numpy2ri
+                    rpy2.robjects.numpy2ri.activate()
+                    self.lzsi = rpy2.robjects.packages.importr("LZeroSpikeInference")
+                    self.sig_trace2 = self.sig_plot.plot()
+                import time
+                start = time.time()
+                fit = self.lzsi.estimateSpikes(y[:4000]+0.1, **{'gam':self.params['gamma'], 'lambda':self.params['lambda'], 'type':"ar1"})
+                print time.time() - start
+                spikes = np.array(fit[0]).astype('uint')
+                model = np.array(fit[1])
+                print spikes
+                self.sig_trace2.setData(t[:len(model)], model, pen='r')
+                self.vticks2.setXVals(t[spikes])
+                self.vticks.update()  # this should not be needed..
+                    
+                
             if self.deconv_plot is not None:
                 self.deconv_trace.setData(t[:len(diff)], diff)
 
