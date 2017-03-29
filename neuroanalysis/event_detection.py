@@ -347,3 +347,38 @@ def exp_reconvolve(data, tau):
     for i in range(1, len(d)):
         d[i] = dtti * d[i-1] + dtt * data[i-1]
     return d
+
+
+_rpy_lzsi = None
+def l0_spike_inference(data, gam, lam):
+    """Infer the times of spike events using L0 spike inference.
+    
+    Parameters
+    ----------
+    data : array
+        Signal to be fit
+    gam : float 0.0-1.0
+        Gamma constant determining exponential decay
+    lam : float
+        Lambda tuning parameter
+    
+    This function uses the LZeroSpikeInference package for R, accessed via
+    the rpy2 package. See: https://github.com/jewellsean/LZeroSpikeInference
+    
+    To set up:
+    
+    * Install R
+    * Clone LZSI package: ``git clone https://github.com/jewellsean/LZeroSpikeInference``
+    * Install package to R: ``install.packages("LZeroSpikeInference", repo=NULL, type="source")``
+    * Install rpy2 from pip
+    """
+    global _rpy_lzsi
+    if _rpy_lzsi is None:
+        import rpy2.robjects.packages
+        import rpy2.robjects.numpy2ri
+        rpy2.robjects.numpy2ri.activate()
+        _rpy_lzsi = rpy2.robjects.packages.importr("LZeroSpikeInference")
+    fit = _rpy_lzsi.estimateSpikes(data, **{'gam':gam, 'lambda':lam, 'type':"ar1"})
+    return {n:np.array(fit[i]) for i,n in enumerate(fit.names)}
+    
+    

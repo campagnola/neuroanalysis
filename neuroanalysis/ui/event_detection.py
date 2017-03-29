@@ -128,7 +128,7 @@ class EventDetector(QtCore.QObject):
                     self.sig_trace2 = self.sig_plot.plot()
                 import time
                 start = time.time()
-                fit = self.lzsi.estimateSpikes(y[:4000]+0.1, **{'gam':self.params['gamma'], 'lambda':self.params['lambda'], 'type':"ar1"})
+                fit = self.lzsi.estimateSpikes(y[:4000], **{'gam':self.params['gamma'], 'lambda':self.params['lambda'], 'type':"ar1"})
                 print time.time() - start
                 spikes = np.array(fit[0]).astype('uint')
                 model = np.array(fit[1])
