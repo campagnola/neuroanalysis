@@ -40,6 +40,8 @@ class Container(object):
 
     @property
     def key(self):
+        """Key that uniquely identifies this object among its siblings.
+        """
         return None
     
     @property

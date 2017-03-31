@@ -13,10 +13,11 @@ class MiesNwb(Experiment):
     def __init__(self, filename):
         Experiment.__init__(self)
         self.filename = filename
-        self.hdf = h5py.File(filename, 'r')
+        self.hdf = None
         self._sweeps = None
         self._groups = None
         self._notebook = None
+        self.open()
         
     def notebook(self):
         """Return compiled data from the lab notebook.
@@ -102,7 +103,20 @@ class MiesNwb(Experiment):
     
     def close(self):
         self.hdf.close()
+        self.hdf = None
+
+    def open(self):
+        if self.hdf is not None:
+            return
+        self.hdf = h5py.File(self.filename, 'r')
+
+    def __enter__(self):
+        self.open()
+        return self
     
+    def __exit__(self, *args):
+        self.close()
+
     #def sweep_groups(self, keys=('shape', 'stim_name', 'V-Clamp Holding Level', 'Clamp Mode')):
         #"""Return a list of sweep groups--each group contains one or more
         #contiguous sweeps with matching metadata.
