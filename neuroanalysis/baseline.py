@@ -49,15 +49,15 @@ def mode_filter(data, window=500, step=None, bins=None):
         step = l2
     i = 0
     while True:
-        if i > len(data)-step:
+        if i > len(data)-l2:
             break
-        vals.append(mode(d1[i:i+window], bins))
+        vals.append(float_mode(d1[i:i+window], bins))
         i += step
             
     chunks = [np.linspace(vals[0], vals[0], l2)]
     for i in range(len(vals)-1):
         chunks.append(np.linspace(vals[i], vals[i+1], step))
-    remain = len(data) - step*(len(vals)-1) - l2
+    remain = len(data) - sum([len(x) for x in chunks])
     chunks.append(np.linspace(vals[-1], vals[-1], remain))
     d2 = np.hstack(chunks)
     return d2
