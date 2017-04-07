@@ -240,8 +240,7 @@ class Psp(FitModel):
         rise_time : scalar
             Time from beginning of psp until peak
         decay_tau : scalar
-            A constant that determines the shape of the psp, mostly affecting the falling phase
-            (see notes)
+            Decay time constant
         amp : scalar
             The peak value of the psp
         rise_power : scalar
@@ -256,7 +255,7 @@ class Psp(FitModel):
         tradeoff between parameters that Exp2 suffers from.
         """
         rise_tau = Psp._compute_rise_tau(rise_time, rise_power, decay_tau)
-        decay_tau = (rise_tau / rise_power) * (np.exp(rise_time / rise_tau) - 1)
+        #decay_tau = (rise_tau / rise_power) * (np.exp(rise_time / rise_tau) - 1)
         max_val = Psp._psp_inner(rise_time, rise_tau, decay_tau, rise_power)
         
         xoff = x - xoffset
