@@ -311,6 +311,9 @@ class MiesSyncRecording(SyncRecording):
         SyncRecording.__init__(self, devs, parent=nwb)
         self._meta['sweep_id'] = sweep_id
 
+    def __repr__(self):
+        return "<%s sweep=%d>" % (self.__class__.__name__, self._sweep_id)
+
     #def channel_meta(self, all_chans=False):
         #"""Return a dict containing the metadata key/value pairs that are shared
         #across all traces in this sweep.

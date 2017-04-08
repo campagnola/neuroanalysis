@@ -1,4 +1,6 @@
 import numpy as np
+import scipy.optimize
+
 
 def binomial_ci(p, n, alpha=0.05 ):
     """
@@ -25,6 +27,14 @@ def binomial_ci(p, n, alpha=0.05 ):
 def ragged_mean(arrays, method='pad'):
     """Return the mean of a list of arrays, where each array may have 
     different length.
+    
+    Parameters
+    ----------
+    arrays : list
+        A list of arrays to be averaged
+    method : "pad" | "clip"
+        If "pad", then the arrays are all padded to the maximum length with NaN.
+        If "clip", then the arrays are truncated to the minimum length.
     """
     arrays = arrays[:]
     

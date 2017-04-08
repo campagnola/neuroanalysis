@@ -194,7 +194,30 @@ class Sigmoid(FitModel):
 class Psp(FitModel):
     """PSP-like fitting model defined as the product of rising and decaying exponentials.
     
-    Parameters are xoffset, yoffset, rise_tau, decay_tau, amp, and rise_power.
+    Parameters
+    ----------
+    x : array or scalar
+        Time values
+    xoffset : scalar
+        Horizontal shift (positive shifts to the right)
+    yoffset : scalar
+        Vertical offset
+    rise_time : scalar
+        Time from beginning of psp until peak
+    decay_tau : scalar
+        Decay time constant
+    amp : scalar
+        The peak value of the psp
+    rise_power : scalar
+        Exponent for the rising phase; larger values result in a slower activation
+    
+    Notes
+    -----
+    This model is mathematically similar to the double exponential used in
+    Exp2 (the only difference being the rising power). However, the parameters
+    are re-expressed to give more direct control over the rise time and peak value.
+    This provides a flatter error surface to fit against, avoiding some of the
+    tradeoff between parameters that Exp2 suffers from.
     """
     # default guess / bounds:
 
@@ -229,30 +252,6 @@ class Psp(FitModel):
     def psp_func(x, xoffset, yoffset, rise_time, decay_tau, amp, rise_power):
         """Function approximating a PSP shape. 
 
-        Parameters
-        ----------
-        x : array or scalar
-            Time values
-        xoffset : scalar
-            Horizontal shift (positive shifts to the right)
-        yoffset : scalar
-            Vertical offset
-        rise_time : scalar
-            Time from beginning of psp until peak
-        decay_tau : scalar
-            Decay time constant
-        amp : scalar
-            The peak value of the psp
-        rise_power : scalar
-            Exponent for the rising phase; larger values result in a slower activation
-        
-        Notes
-        -----
-        This model is mathematically similar to the double exponential used in
-        Exp2 (the only difference being the rising power). However, the parameters
-        are re-expressed to give more direct control over the rise time and peak value.
-        This provides a flatter error surface to fit against, avoiding some of the
-        tradeoff between parameters that Exp2 suffers from.
         """
         rise_tau = Psp._compute_rise_tau(rise_time, rise_power, decay_tau)
         #decay_tau = (rise_tau / rise_power) * (np.exp(rise_time / rise_tau) - 1)
@@ -273,14 +272,21 @@ class Psp(FitModel):
         fn = lambda tr: tr * np.log(1 + (decay_tau * rise_power / tr)) - rise_time
         return scipy.optimize.fsolve(fn, (rise_time,))[0]
 
+
+class StackedPsp(FitModel):
+    """A PSP on top of an exponential decay.
+    
+    Parameters are the same as for Psp, with the addition of *exp_amp*, which
+    is the amplitude of the underlying exponential decay at the onset of the
+    psp.
+    """
+    def __init__(self):
+        FitModel.__init__(self, self.stacked_psp_func, independent_vars=['x'])
+    
     @staticmethod
-    def decay_tau(**params):
-        """Calculate decay time constant of the psp given its parameters.
-        """
-        tr = params['k']
-        pr = params['rise_power']
-        tmax = params['rise_time']
-        return tr / pr * (np.exp(tmax / tr) - 1)
+    def stacked_psp_func(x, xoffset, yoffset, rise_time, decay_tau, amp, rise_power, exp_amp):
+        exp = exp_amp * np.exp(-(x-xoffset) / decay_tau)
+        return exp + Psp.psp_func(x, xoffset, yoffset, rise_time, decay_tau, amp, rise_power)
 
 
 class Psp2(FitModel):
