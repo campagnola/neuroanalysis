@@ -15,8 +15,9 @@ def binomial_ci(p, n, alpha=0.05 ):
         The number of trials
     n : int
         The number of successful trials
-    alpha : int
+    alpha : float
         The range of the confidence interval to return. (alpha=0.05 gives a 95% confidence interval)
+    
     Credit: http://stackoverflow.com/questions/13059011/is-there-any-python-function-library-for-calculate-binomial-confidence-intervals
     """
     upper_fn = lambda c: scipy.stats.binom.cdf(p, n, c) - alpha
