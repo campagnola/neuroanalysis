@@ -19,12 +19,12 @@ class FitModel(lmfit.Model):
     Example uses:
         
         # single exponential fit
-        fit = expfitting.Exp1.fit(data, 
+        fit = expfitting.Exp1.fit(data, params=dict(
                 x=time_vals,
                 xoffset=(0, 'fixed'),           # x offset is fixed at 0
                 yoffset=(yoff_guess, -120, 0),  # y offset is bounded between -120 and 0
                 amp=(amp_guess, 0, 50),         # amp is bounded between 0 and 50
-                tau=(tau_guess, 0.1, 50))       # tau is bounded between 0.1 and 50
+                tau=(tau_guess, 0.1, 50)))      # tau is bounded between 0.1 and 50
         
         # plot the fit
         fit_curve = fit.eval()
@@ -34,7 +34,7 @@ class FitModel(lmfit.Model):
         # double exponential fit with tau ratio constraint
         # note that 'tau_ratio' does not appear in the exp2 model; 
         # we can define new parameters here.
-        fit = expfitting.Exp2.fit(data, 
+        fit = expfitting.Exp2.fit(data, params=dict(
                 x=time_vals,
                 xoffset=(0, 'fixed'),
                 yoffset=(yoff_guess, -120, 0),
@@ -43,10 +43,10 @@ class FitModel(lmfit.Model):
                 amp2=(-0.5, -50, 0),
                 tau_ratio=(10, 3, 50),          # tau_ratio is bounded between 3 and 50
                 tau2='tau1 * tau_ratio'         # tau2 is forced to be tau1 * tau_ratio 
-                )
+                ))
         
     """
-    def fit(self, data, interactive=False, **params):
+    def fit(self, data, params=None, interactive=False, **kwds):
         """ Return a fit of data to this model.
         
         Parameters
@@ -60,17 +60,17 @@ class FitModel(lmfit.Model):
         parameter names, or passed directly to Model.fit() for independent
         variable names.
         """
-        fit_params = {}
-        model_params = {}
-        for k,v in params.items():
-            if k in self.independent_vars or k in ['weights', 'method', 'scale_covar', 'iter_cb', 'verbose', 'fit_kws']:
-                fit_params[k] = v
-            else:
-                model_params[k] = v
-        p = self.make_params(**model_params)
-        fit = lmfit.Model.fit(self, data, params=p, **fit_params)
+        if params is None:
+            params = {}
+        p = self.make_params(**params)
+        fit = lmfit.Model.fit(self, data, params=p, **kwds)
         if interactive:
             self.show_interactive(fit)
+
+        # monkey-patch some extra GOF metrics:
+        fit.rmse = lambda: self.rmse(fit)
+        fit.nrmse = lambda: self.nrmse(fit)
+
         return fit
         
     def make_params(self, **params):
@@ -132,6 +132,15 @@ class FitModel(lmfit.Model):
             self._interactive_win = FitExplorer(model=self, fit=fit)
         self._interactive_win.show()
 
+    @staticmethod
+    def rmse(result):
+        residual = result.residual  # result.data - result.best_fit
+        return (residual**2 / residual.size).sum() ** 0.5
+
+    @staticmethod
+    def nrmse(result):
+        rmse = FitModel.rmse(result)
+        return rmse / result.data.std()
         
 class Exp(FitModel):
     """Single exponential fitting model.
