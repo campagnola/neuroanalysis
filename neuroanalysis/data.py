@@ -502,6 +502,13 @@ class Trace(Container):
     @property
     def shape(self):
         return self.data.shape
+    
+    def __len__(self):
+        return self.shape[0]
+    
+    @property
+    def duration(self):
+        return self.shape[0] * self.dt
 
     @property
     def ndim(self):
