@@ -119,3 +119,13 @@ def ragged_mean(arrays, method='pad'):
             
     # Stack into one array and return the nanmean
     return np.nanmean(np.vstack(arrays), axis=0)
+
+
+def weighted_std(values, weights):
+    """Return the weighted standard deviation of *values*.
+
+    Source: http://stackoverflow.com/questions/2413522/weighted-standard-deviation-in-numpy
+    """
+    average = np.average(values, weights=weights)
+    variance = np.average((values-average)**2, weights=weights)
+    return variance**0.5

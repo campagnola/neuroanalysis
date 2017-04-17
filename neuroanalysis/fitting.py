@@ -8,6 +8,8 @@ import numpy as np
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui
 
+from .stats import weighted_std
+
 
 class FitModel(lmfit.Model):
     """ Simple extension of lmfit.Model that allows one-line fitting.
@@ -134,14 +136,19 @@ class FitModel(lmfit.Model):
 
     @staticmethod
     def rmse(result):
-        residual = result.residual  # result.data - result.best_fit
+        residual = result.residual
         return (residual**2 / residual.size).sum() ** 0.5
 
     @staticmethod
     def nrmse(result):
         rmse = FitModel.rmse(result)
-        return rmse / result.data.std()
-        
+        if result.weights is None:
+            std = result.data.std()
+        else:
+            std = weighted_std(result.data, result.weights)
+        return rmse / std
+
+
 class Exp(FitModel):
     """Single exponential fitting model.
     
