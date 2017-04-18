@@ -37,6 +37,11 @@ def detect_ic_evoked_spike(trace, pulse_edges, threshold=-10e-3, duration=3e-3):
     peak_ind = np.argmax(chunk)
     peak_val = chunk[peak_ind]
     if peak_val < threshold:
+        # trace did not cross threshold; no spike here
+        return None
+    if peak_ind == 0:
+        # peak find failed--this can happen when all samples in
+        # the chunk have the same value
         return None
     
     dvdt = np.diff(chunk[:peak_ind])
