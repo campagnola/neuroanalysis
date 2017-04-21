@@ -502,6 +502,13 @@ class Trace(Container):
     @property
     def shape(self):
         return self.data.shape
+    
+    def __len__(self):
+        return self.shape[0]
+    
+    @property
+    def duration(self):
+        return self.shape[0] * self.dt
 
     @property
     def ndim(self):
@@ -515,18 +522,69 @@ class Trace(Container):
     def recording(self):
         return self._recording()
 
-    def copy(self, data=None):
+    def copy(self, data=None, time_values=None, **kwds):
         if data is None:
             data = self.data.copy()
-        tval = self._time_values
-        if tval is not None:
-            tval = tval.copy()
-        return Trace(data, time_values=tval, recording=self.recording, **self._meta)
+        
+        if time_values is None:
+            tval = self._time_values
+            if tval is not None:
+                tval = tval.copy()
+        else:
+            tval = time_values
+        
+        meta = self._meta.copy()
+        meta.update(kwds)
+        
+        return Trace(data, time_values=tval, recording=self.recording, **meta)
 
     @property
     def parent(self):
         return self.recording
+
+    def __getitem__(self, item):
+        if isinstance(item, slice):
+            return TraceView(self, item)
+        else:
+            raise TypeError("Invalid Trace slice: %r" % item)
+
+    def downsample(self, n=None, f=None):
+        """Return a downsampled copy of this trace.
+        
+        Parameters
+        ----------
+        n : int
+            (optional) number of samples to average
+        f : float
+            (optional) desired target sample rate
+        """
+        if None not in (f, n):
+            raise TypeError("Must specify either n or f (not both).")
+        if n is None:
+            if f is None:
+                raise TypeError("Must specify either n or f.")
+            n = self.sample_rate // f
+        data = util.downsample(self.data, n, axis=0)
+        tvals = self._time_values
+        if tvals is not None:
+            tvals = tvals[::n]
+        dt = self._meta['dt']
+        if dt is not None:
+            dt = dt * n
+        
+        return self.copy(data=data, time_values=tvals, dt=dt)
+        
     
+
+class TraceView(Trace):
+    def __init__(self, trace, sl):
+        self._parent_trace = trace
+        self._view_slice = sl
+        data = trace.data[self._view_slice]
+        tvals = trace.time_values[self._view_slice]
+        meta = {k:trace.meta[k] for k in ['dt', 'start_time', 'units', 'channel_id']}
+        Trace.__init__(self, data, time_values=tvals, recording=trace.recording, **meta)
+        
 
 # TODO: this class should not be a subclass of PatchClampRecording
 # Instead, it should have a PatchClampRecording instance as an attribute.

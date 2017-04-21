@@ -15,8 +15,9 @@ def binomial_ci(p, n, alpha=0.05 ):
         The number of trials
     n : int
         The number of successful trials
-    alpha : int
+    alpha : float
         The range of the confidence interval to return. (alpha=0.05 gives a 95% confidence interval)
+    
     Credit: http://stackoverflow.com/questions/13059011/is-there-any-python-function-library-for-calculate-binomial-confidence-intervals
     """
     upper_fn = lambda c: scipy.stats.binom.cdf(p, n, c) - alpha
@@ -118,3 +119,13 @@ def ragged_mean(arrays, method='pad'):
             
     # Stack into one array and return the nanmean
     return np.nanmean(np.vstack(arrays), axis=0)
+
+
+def weighted_std(values, weights):
+    """Return the weighted standard deviation of *values*.
+
+    Source: http://stackoverflow.com/questions/2413522/weighted-standard-deviation-in-numpy
+    """
+    average = np.average(values, weights=weights)
+    variance = np.average((values-average)**2, weights=weights)
+    return variance**0.5
