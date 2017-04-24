@@ -108,7 +108,11 @@ class MiesNwb(Experiment):
     def open(self):
         if self.hdf is not None:
             return
-        self.hdf = h5py.File(self.filename, 'r')
+        try:
+            self.hdf = h5py.File(self.filename, 'r')
+        except Exception:
+            print("Error opening: %s" % self.filename)
+            raise
 
     def __enter__(self):
         self.open()
