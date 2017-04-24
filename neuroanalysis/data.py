@@ -453,7 +453,7 @@ class Trace(Container):
     Traces may specify units, a starting time, and either a sample period or an
     array of time values.
     """
-    def __init__(self, data=None, dt=None, start_time=None, time_values=None, units=None, channel_id=None, recording=None):
+    def __init__(self, data=None, dt=None, start_time=None, time_values=None, units=None, channel_id=None, recording=None, **meta):
         Container.__init__(self)
         self._data = data
         self._meta = OrderedDict([
@@ -462,6 +462,7 @@ class Trace(Container):
             ('units', units),
             ('channel_id', channel_id),
         ])
+        self._meta.update(meta)
         self._time_values = time_values
         self._recording = util.WeakRef(recording)
         
