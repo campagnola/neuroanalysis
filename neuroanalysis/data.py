@@ -15,6 +15,8 @@ systems.
 This abstraction layer also helps to enforce good coding practice by separating data representation,
 analysis, and visualization.
 """
+from __future__ import division
+
 import numpy as np
 import pandas
 from . import util
@@ -246,7 +248,7 @@ class SyncRecording(Container):
     (for example, two patch-clamp amplifiers and a camera).
     """
     def __init__(self, recordings=None, parent=None):
-        self._parent = parent
+        self._parent = util.WeakRef(parent)
         self._recordings = recordings if recordings is not None else OrderedDict()
         Container.__init__(self)
 
@@ -278,7 +280,7 @@ class SyncRecording(Container):
 
     @property
     def parent(self):
-        return self._parent
+        return self._parent()
 
     @property
     def children(self):
@@ -453,12 +455,13 @@ class Trace(Container):
     Traces may specify units, a starting time, and either a sample period or an
     array of time values.
     """
-    def __init__(self, data=None, dt=None, start_time=None, time_values=None, units=None, channel_id=None, recording=None, **meta):
+    def __init__(self, data=None, dt=None, sample_rate=None, start_time=None, time_values=None, units=None, channel_id=None, recording=None, **meta):
         Container.__init__(self)
         self._data = data
         self._meta = OrderedDict([
             ('start_time', start_time),
             ('dt', dt),
+            ('sample_rate', sample_rate),
             ('units', units),
             ('channel_id', channel_id),
         ])
@@ -476,29 +479,53 @@ class Trace(Container):
     
     @property
     def sample_rate(self):
-        if self._meta['dt'] is None:
-            raise TypeError("Trace sample rate was not specified.")
-        return 1.0 / self._meta['dt']
+        rate = self._meta['sample_rate']
+        if rate is not None:
+            return rate
+        else:
+            return 1.0 / self.dt
 
     @property
     def dt(self):
-        if self._meta['dt'] is None:
-            # assume regular sampling
-            t = self.time_values
-            self._meta['dt'] = t[1] - t[0]
-        return self._meta['dt']
+        # need to be very careful about how we calculate dt and sample rate
+        # to avoid fp errors.
+        dt = self._meta['dt']
+        if dt is not None:
+            return dt
+        
+        rate = self._meta['sample_rate']
+        if rate is not None:
+            return 1.0 / rate
+        
+        t = self.time_values
+        if t is not None:
+            # assume regular sampling.
+            # don't cache this value; we want to remember whether the user 
+            # provided dt or samplerate
+            return t[1] - t[0]
+        
+        raise TypeError("No sample timing is specified for this trace.")
     
+    @property
+    def time_values(self):
+        if self._time_values is not None:
+            return self._time_values
+        
+        dt = self._meta['dt']
+        if dt is not None:
+            self._time_values = np.arange(len(self.data)) * dt
+            return self._time_values
+        
+        rate = self._meta['sample_rate']
+        if rate is not None:
+            self._time_values = np.arange(len(self.data)) * (1.0 / rate)
+            return self._time_values
+        
+        raise TypeError("No sample timing is specified for this trace.")
+
     @property
     def units(self):
         return self._meta['units']
-
-    @property
-    def time_values(self):
-        if self._time_values is None:
-            if self._meta['dt'] is None:
-                raise TypeError("No time values or sample rate were specified for this Trace.")
-            self._time_values = np.arange(len(self.data)) * self.dt
-        return self._time_values
 
     @property
     def shape(self):
