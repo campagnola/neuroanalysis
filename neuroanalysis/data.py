@@ -591,7 +591,11 @@ class Trace(Container):
         if n is None:
             if f is None:
                 raise TypeError("Must specify either n or f.")
-            n = self.sample_rate // f
+            n = int(np.round(self.sample_rate / f))
+        if n == 1:
+            return self
+        if n <= 0:
+            raise Exception("Invalid downsampling factor: %d" % n)
         data = util.downsample(self.data, n, axis=0)
         tvals = self._time_values
         if tvals is not None:
@@ -610,7 +614,7 @@ class TraceView(Trace):
         self._view_slice = sl
         data = trace.data[self._view_slice]
         tvals = trace.time_values[self._view_slice]
-        meta = {k:trace.meta[k] for k in ['dt', 'start_time', 'units', 'channel_id']}
+        meta = {k:trace.meta[k] for k in ['dt', 'sample_rate', 'start_time', 'units', 'channel_id']}
         Trace.__init__(self, data, time_values=tvals, recording=trace.recording, **meta)
         
 
