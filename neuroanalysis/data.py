@@ -455,12 +455,16 @@ class Trace(Container):
     Traces may specify units, a starting time, and either a sample period or an
     array of time values.
     """
-    def __init__(self, data=None, dt=None, sample_rate=None, start_time=None, time_values=None, units=None, channel_id=None, recording=None, **meta):
+    def __init__(self, data=None, dt=None, t0=None, sample_rate=None, start_time=None, time_values=None, units=None, channel_id=None, recording=None, **meta):
         Container.__init__(self)
+        if time_values is not None and t0 is not None:
+            raise Exception("Cannot specify both t0 and time_values")
+            
         self._data = data
         self._meta = OrderedDict([
             ('start_time', start_time),
             ('dt', dt),
+            ('t0', t0),
             ('sample_rate', sample_rate),
             ('units', units),
             ('channel_id', channel_id),
@@ -505,6 +509,21 @@ class Trace(Container):
             return t[1] - t[0]
         
         raise TypeError("No sample timing is specified for this trace.")
+
+    @property
+    def t0(self):
+        t0 = self._meta['t0']
+        if t0 is not None:
+            return t0
+        if self._time_values is not None:
+            return self._time_values[0]
+        return 0
+    
+    @t0.setter
+    def t0(self, t0):
+        self._meta['t0'] = t0
+        if self._time_values is not None:
+            self._time_values = self._time_values + (t0 - self._time_values[0])
     
     @property
     def time_values(self):
