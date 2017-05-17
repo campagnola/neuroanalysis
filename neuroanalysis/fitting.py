@@ -305,6 +305,32 @@ class StackedPsp(FitModel):
         return exp + Psp.psp_func(x, xoffset, yoffset, rise_time, decay_tau, amp, rise_power)
 
 
+class PspTrain(FitModel):
+    """A Train of PSPs, all having the same rise/decay kinetics.
+    """
+    def __init__(self):
+        FitModel.__init__(self, self.psp_train_func, independent_vars=['x'])
+
+    @staticmethod
+    def psp_train_func(x, xoffset, yoffset, rise_time, decay_tau, rise_power, **kwds):
+        """Paramters are the same as for the single Psp model, with the exception
+        that the x offsets and amplitudes of each event must be numbered like
+        xoffset0, amp0, xoffset1, amp1, etc.
+        """
+        n_exp = len(kwds) // 2
+        for i in range(n_exp):
+            xoffi = kwds['xoffset%d'%i]
+            amp = kwds['amp%d'%i]
+            psp = Psp.psp_func(x, xoffset+xoffi, 0, rise_time, decay_tau, amp, rise_power)
+            if i == 0:
+                tot = psp
+            else:
+                tot += psp
+        
+        return tot + yoffset
+
+
+
 class Psp2(FitModel):
     """PSP-like fitting model with double-exponential decay.
     
