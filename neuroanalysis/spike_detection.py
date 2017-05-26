@@ -111,6 +111,9 @@ def detect_vc_evoked_spike(trace, pulse_edges, sigma=20e-6, delay=150e-6, thresh
     if len(smooth) == 0:
         raise ValueError("Invalid pulse indices [%d->%d:%d] for data (%d)" % (pulse_edges[0], pstart, pstop, len(trace.data)))
     peak_ind = np.argmin(smooth)
+    if peak_ind == 0 or peak_ind == len(smooth)-1:
+        # no local minimum found within pulse edges
+        return None
     
     # a spike is detected only if the peak is at least 50pA less than the final value before pulse offset
     peak_diff = smooth[-1] - smooth[peak_ind]
