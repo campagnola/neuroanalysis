@@ -38,6 +38,10 @@ class PlotGrid(QtGui.QWidget):
         self.rows = rows
         self.cols = cols
         
+    @property
+    def shape(self):
+        return (self.rows, self.cols)
+        
     def remove_plots(self):
         for i in range(self.rows):
             for j in range(self.cols):

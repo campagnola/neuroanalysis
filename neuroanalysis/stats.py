@@ -101,6 +101,7 @@ def ragged_mean(arrays, method='pad'):
         If "pad", then the arrays are all padded to the maximum length with NaN.
         If "clip", then the arrays are truncated to the minimum length.
     """
+    assert len(arrays) > 0
     arrays = arrays[:]
     
     if method == 'pad':
