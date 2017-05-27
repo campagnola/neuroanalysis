@@ -379,6 +379,8 @@ class PatchClampRecording(Recording):
     * Minimum one recorded channel, possibly more
     * May include stimulus waveform
     * Metadata about amplifier state (filtering, gain, bridge balance, compensation, etc)
+    
+    Should have at least 'primary' and 'command' channels.
     """
     def __init__(self, *args, **kwds):
         meta = OrderedDict()
@@ -457,8 +459,8 @@ class Trace(Container):
     """
     def __init__(self, data=None, dt=None, t0=None, sample_rate=None, start_time=None, time_values=None, units=None, channel_id=None, recording=None, **meta):
         Container.__init__(self)
-        if time_values is not None and t0 is not None:
-            raise Exception("Cannot specify both t0 and time_values")
+        if time_values is not None and t0 is not None and t0 != time_values[0]:
+            raise Exception("t0 must be equal to time_values[0] if both are specified")
             
         self._data = data
         self._meta = OrderedDict([
