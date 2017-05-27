@@ -332,18 +332,19 @@ def clements_bekkers(data, template):
     return DC, scale, offset
 
 
-def exp_deconvolve(data, tau):
-    dt = 1
-    arr = data.view(np.ndarray)
-    return arr[:-1] + (tau / dt) * (arr[1:] - arr[:-1])
+def exp_deconvolve(trace, tau):
+    dt = trace.dt
+    arr = trace.data
+    deconv = arr[:-1] + (tau / dt) * (arr[1:] - arr[:-1])
+    return trace.copy(data=deconv, time_values=trace.time_values[:-1])
 
     
-def exp_reconvolve(data, tau):
+def exp_reconvolve(trace, tau):
     # equivalent to subtracting an exponential decay from the original unconvolved signal
-    dt = 1
-    d = np.zeros(data.shape, data.dtype)
+    dt = trace.dt
+    d = np.zeros(trace.data.shape, trace.data.dtype)
     dtt = dt / tau
     dtti = 1. - dtt
     for i in range(1, len(d)):
-        d[i] = dtti * d[i-1] + dtt * data[i-1]
-    return d
+        d[i] = dtti * d[i-1] + dtt * trace.data[i-1]
+    return trace.copy(data=d)
