@@ -317,11 +317,12 @@ class PspTrain(FitModel):
         that the x offsets and amplitudes of each event must be numbered like
         xoffset0, amp0, xoffset1, amp1, etc.
         """
-        n_exp = len(kwds) // 2
-        for i in range(n_exp):
+        n_psp = len([k for k in kwds if k.startswith('amp')])
+        for i in range(n_psp):
             xoffi = kwds['xoffset%d'%i]
             amp = kwds['amp%d'%i]
-            psp = Psp.psp_func(x, xoffset+xoffi, 0, rise_time, decay_tau, amp, rise_power)
+            tauf = kwds.get('decay_tau_factor%d'%i, 1)
+            psp = Psp.psp_func(x, xoffset+xoffi, 0, rise_time, decay_tau*tauf, amp, rise_power)
             if i == 0:
                 tot = psp
             else:

@@ -189,7 +189,7 @@ def threshold_events(data, threshold, adjust_times=True, baseline=0.0):
                         d1 = diff * float(lastAdj) / tot
                         d2 = diff * float(adj1) / tot
                         #events[i-1]['len'] -= (d1+1)
-                        hits[i-1] = (hits[i-1][0], hits[i-1][1]-(d1+1))
+                        hits[i-1] = (int(hits[i-1][0]), int(hits[i-1][1]-(d1+1)))
                         t1 += d2
                         #recompute[i-1] = True
                         #print "  correct t1", d2, "  correct prev.", d1+1
@@ -214,7 +214,7 @@ def threshold_events(data, threshold, adjust_times=True, baseline=0.0):
             
         #starts.append(t1)
         #stops.append(t2)
-        hits[i] = (t1, t2)
+        hits[i] = (int(t1), int(t2))
         events[i]['peak'] = peak
         #if index == 'peak':
             #events[i]['index']=ind
