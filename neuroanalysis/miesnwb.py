@@ -31,9 +31,10 @@ class MiesNwb(Experiment):
         if self._notebook is None:
             # collect all lab notebook entries
             nb_entries = OrderedDict()
-            nb_keys = self.hdf['general']['labnotebook']['ITC1600_Dev_0']['numericalKeys'][0]
+            device = self.hdf['general/devices'].keys()[0].split('_',1)[-1]
+            nb_keys = self.hdf['general']['labnotebook'][device]['numericalKeys'][0]
             nb_fields = OrderedDict([(k, i) for i,k in enumerate(nb_keys)])
-            nb = self.hdf['general']['labnotebook']['ITC1600_Dev_0']['numericalValues']
+            nb = self.hdf['general']['labnotebook'][device]['numericalValues']
 
             # EntrySourceType field is needed to distinguish between records created by TP vs sweep
             entry_source_type_index = nb_fields.get('EntrySourceType', None)
@@ -96,11 +97,15 @@ class MiesNwb(Experiment):
         if self._sweeps is None:
             sweeps = set()
             for k in self.hdf['acquisition/timeseries'].keys():
-                a, b, c = k.split('_')
+                a, b, c = k.split('_')[:3] #discard anything past AD# channel
                 sweeps.add(b)
-            self._sweeps = [MiesSyncRecording(self, int(sweep_id)) for sweep_id in sorted(list(sweeps))]
+            self._sweeps = [self.create_sync_recording(int(sweep_id)) for sweep_id in sorted(list(sweeps))]
         return self._sweeps
     
+    def create_sync_recording(self, sweep_id):
+
+        return MiesSyncRecording(self, sweep_id)
+
     def close(self):
         self.hdf.close()
         self.hdf = None
@@ -222,7 +227,8 @@ class MiesRecording(PatchClampRecording):
         self._sweep = sweep
         self._nwb = sweep._nwb
         self._trace_id = (sweep_id, ad_chan)
-        self._hdf_group = self._nwb.hdf['acquisition/timeseries/data_%05d_AD%d' % self._trace_id]
+
+        self._hdf_group = self._nwb.hdf['acquisition/timeseries/data%05d/AD%d' %self._trace_id]
         self._da_chan = None
         headstage_id = int(self._hdf_group['electrode_name'].value[0].split('_')[1])
         start = self._hdf_group['starting_time'].value[0]
@@ -260,6 +266,7 @@ class MiesRecording(PatchClampRecording):
     def _get_stim_data(self):
         scale = 1e-3 if self.clamp_mode == 'vc' else 1e-12
         return np.array(self.command_hdf) * scale
+
 
     def da_chan(self):
         """Return the DA channel ID for this recording.
@@ -301,15 +308,21 @@ class MiesSyncRecording(SyncRecording):
         for k in self._nwb.hdf['acquisition/timeseries'].keys():
             if not k.startswith('data_%05d_' % sweep_id):
                 continue
-            chans.append(int(k.split('_')[-1][2:]))
+            chans.append(int(k.split('_')[:3][-1][2:]))
         self._ad_channels = sorted(chans)
         
         devs = OrderedDict()
         for ch in self._ad_channels:
-            rec = MiesRecording(self, sweep_id, ch)
+            rec = self.create_recording(sweep_id, ch)
             devs[rec.device_id] = rec
         SyncRecording.__init__(self, devs, parent=nwb)
         self._meta['sweep_id'] = sweep_id
+
+    
+    def create_recording(self, sweep_id, ch):
+
+        return MiesRecording(self, sweep_id, ch)
+
 
     def __repr__(self):
         return "<%s sweep=%d>" % (self.__class__.__name__, self._sweep_id)
