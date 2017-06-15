@@ -228,7 +228,7 @@ class MiesRecording(PatchClampRecording):
         self._nwb = sweep._nwb
         self._trace_id = (sweep_id, ad_chan)
 
-        self._hdf_group = self._nwb.hdf['acquisition/timeseries/data%05d/AD%d' %self._trace_id]
+        self._hdf_group = self._nwb.hdf['acquisition/timeseries/data_%05d_AD%d' %self._trace_id]
         self._da_chan = None
         headstage_id = int(self._hdf_group['electrode_name'].value[0].split('_')[1])
         start = self._hdf_group['starting_time'].value[0]
@@ -312,6 +312,7 @@ class MiesSyncRecording(SyncRecording):
         self._ad_channels = sorted(chans)
         
         devs = OrderedDict()
+
         for ch in self._ad_channels:
             rec = self.create_recording(sweep_id, ch)
             devs[rec.device_id] = rec
