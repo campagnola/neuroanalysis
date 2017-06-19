@@ -308,16 +308,27 @@ class StackedPsp(FitModel):
 class PspTrain(FitModel):
     """A Train of PSPs, all having the same rise/decay kinetics.
     """
-    def __init__(self):
-        FitModel.__init__(self, self.psp_train_func, independent_vars=['x'])
+    def __init__(self, n_psp):
+        self.n_psp = n_psp
+        def fn(*args, **kwds):
+            return self.psp_train_func(n_psp, *args, **kwds)
+        
+        # fn.argnames and fn.kwargs are used internally by lmfit to override
+        # its automatic argument detection
+        fn.argnames = ['x', 'xoffset', 'yoffset', 'rise_time', 'decay_tau', 'rise_power']
+        fn.kwargs = []
+        for i in range(n_psp):
+            fn.argnames.extend(['xoffset%d'%i, 'amp%d'%i])
+            fn.kwargs.append(('decay_tau_factor%d'%i, None))
+        
+        FitModel.__init__(self, fn, independent_vars=['x'])
 
     @staticmethod
-    def psp_train_func(x, xoffset, yoffset, rise_time, decay_tau, rise_power, **kwds):
+    def psp_train_func(n_psp, x, xoffset, yoffset, rise_time, decay_tau, rise_power, **kwds):
         """Paramters are the same as for the single Psp model, with the exception
         that the x offsets and amplitudes of each event must be numbered like
         xoffset0, amp0, xoffset1, amp1, etc.
         """
-        n_psp = len([k for k in kwds if k.startswith('amp')])
         for i in range(n_psp):
             xoffi = kwds['xoffset%d'%i]
             amp = kwds['amp%d'%i]
