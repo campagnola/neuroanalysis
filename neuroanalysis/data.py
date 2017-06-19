@@ -18,7 +18,6 @@ analysis, and visualization.
 from __future__ import division
 
 import numpy as np
-import pandas
 from . import util
 from collections import OrderedDict
 
@@ -138,6 +137,7 @@ class Experiment(Container):
             tr[k] = [m[k] for m in meta]
         
         # create a table
+        import pandas
         return pandas.DataFrame(tr)
 
     @property
