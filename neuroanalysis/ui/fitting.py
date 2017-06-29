@@ -40,7 +40,7 @@ class FitExplorer(QtGui.QWidget):
         
         for k in self.model.param_names:
             for pname in ['initial parameters', 'fit parameters']:
-                p = pg.parametertree.Parameter.create(name=k, type='float', value=0, dec=True, minStep=1e-12, step=0.2)
+                p = pg.parametertree.Parameter.create(name=k, type='float', value=0, dec=True, minStep=1e-12, step=0.2, delay=0)
                 self.params.child(pname).addChild(p)
                 
             p = ConstraintParameter(self.params.child('initial parameters', k))

@@ -6,6 +6,7 @@ import scipy.ndimage as ndi
 
 from ..event_detection import threshold_events, exp_deconvolve
 from ..baseline import float_mode
+from .filter import SignalFilter
 
 
 class EventDetector(QtCore.QObject):
@@ -31,10 +32,13 @@ class EventDetector(QtCore.QObject):
     
     def __init__(self):
         QtCore.QObject.__init__(self)
+        
+        self.filter = SignalFilter()
+        
         self.params = pt.Parameter(name='Spike detection', type='group', children=[
-            {'name': 'gaussian sigma', 'type': 'float', 'value': 200e-6, 'bounds': [0, None], 'suffix': 's', 'siPrefix': True, 'dec': True, 'minStep': 10e-6},
             {'name': 'deconv const', 'type': 'float', 'value': 0.01, 'suffix': 's', 'siPrefix': True, 'dec': True, 'minStep': 1e-4},
             {'name': 'threshold', 'type': 'float', 'value': 0.05, 'dec': True, 'minStep': 1e-12},
+            self.filter.params,
         ])
         self.sig_plot = None
         self.deconv_plot = None
@@ -99,23 +103,27 @@ class EventDetector(QtCore.QObject):
         
         
         # Exponential deconvolution; see Richardson & Silberberg, J. Neurophysiol 2008
-        tau = self.params['deconv const'] / dt
-        diff = exp_deconvolve(y, tau)
+        tau = self.params['deconv const']
+        diff = exp_deconvolve(trace, tau)
         
-        diff = ndi.gaussian_filter(diff, self.params['gaussian sigma'] / dt)
-        diff -= float_mode(diff, bins=200)
+        # remove baseline
+        bsub = diff.data - float_mode(diff.data, bins=200)
+        bsub = diff.copy(data=bsub)
         
-        self.events = threshold_events(diff, self.threshold_line.value())
+        # filter
+        filt = self.filter.process(bsub)        
+        
+        self.events = threshold_events(filt.data, self.threshold_line.value())
         #self.events = self.events[self.events['sum'] > 0]
 
         if show:
-            t = trace.time_values
             if self.sig_plot is not None:
+                t = trace.time_values
                 self.sig_trace.setData(t, y)
                 self.vticks.setXVals(t[self.events['index']])
                 self.vticks.update()  # this should not be needed..
             if self.deconv_plot is not None:
-                self.deconv_trace.setData(t[:len(diff)], diff)
+                self.deconv_trace.setData(filt.time_values, filt.data)
 
         return self.events
         
