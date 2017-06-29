@@ -67,18 +67,26 @@ class MiesNwb(Experiment):
                 sweep_num = int(sweep_num)
                 # each sweep gets multiple nb records; for each field we use the last non-nan value in any record
                 if sweep_num not in nb_entries:
-                    nb_entries[sweep_num]= np.array(rec)
+                    nb_entries[sweep_num] = np.array(rec)
                 else:
                     mask = ~np.isnan(rec)
                     nb_entries[sweep_num][mask] = rec[mask]
 
             for swid, entry in nb_entries.items():
-                # last column applies to all channels
+                # last column is "global"; applies to all channels
                 mask = ~np.isnan(entry[:,8])
                 entry[mask] = entry[:,8:9][mask]
     
                 # first 4 fields of first column apply to all channels
                 entry[:4] = entry[:4, 0:1]
+
+                # async AD fields (notably used to record temperature) appear
+                # only in column 0, but might move to column 8 later? Since these
+                # are not channel-specific, we'll copy them to all channels
+                for i,k in enumerate(nb_keys):
+                    if not k.startswith('Async AD '):
+                        continue
+                    entry[i] = entry[i, 0]
 
                 # convert to list-o-dicts
                 meta = []

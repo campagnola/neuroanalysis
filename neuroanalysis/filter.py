@@ -47,6 +47,8 @@ def remove_artifacts(trace, edges, window):
 
     # remove and replace with linregress
     for on, off in merged_edges:
+        on = int(on)
+        off = int(off)
         chunkx = t[on-w:off+w]
         chunky = data[on-w:off+w]
         mask = np.ones(len(chunkx), dtype='bool')

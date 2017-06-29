@@ -18,7 +18,6 @@ analysis, and visualization.
 from __future__ import division
 
 import numpy as np
-import pandas
 from . import util
 from collections import OrderedDict
 
@@ -138,6 +137,7 @@ class Experiment(Container):
             tr[k] = [m[k] for m in meta]
         
         # create a table
+        import pandas
         return pandas.DataFrame(tr)
 
     @property
@@ -384,10 +384,16 @@ class PatchClampRecording(Recording):
     """
     def __init__(self, *args, **kwds):
         meta = OrderedDict()
-        for k in ['clamp_mode', 'patch_mode', 'holding_potential', 'holding_current']:
+        for k in ['cell_id', 'clamp_mode', 'patch_mode', 'holding_potential', 'holding_current']:
             meta[k] = kwds.pop(k, None)
         Recording.__init__(self, *args, **kwds)
         self._meta.update(meta)
+        
+    @property
+    def cell_id(self):
+        """Uniquely identifies the cell attached in this recording.
+        """
+        return self._meta['cell_id']
         
     @property
     def clamp_mode(self):
