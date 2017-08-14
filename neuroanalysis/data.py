@@ -417,6 +417,13 @@ class PatchClampRecording(Recording):
         else:
             return self._baseline_value()
 
+    def rounded_holding_potential(self, increment=5e-3):
+        """Return the holding potential rounded to the nearest increment.
+        
+        The default increment rounds to the nearest 5 mV.
+        """
+        return increment * np.round(self.holding_potential / increment)
+
     @property
     def holding_current(self):
         """The steady-state pipette current applied during this recording.
