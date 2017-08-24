@@ -20,7 +20,7 @@ from __future__ import division
 import numpy as np
 from . import util
 from collections import OrderedDict
-
+from .stats import ragged_mean
 
 
 class Container(object):
@@ -667,16 +667,64 @@ class Trace(Container):
             i2 = np.argwhere(self.time_values >= stop)[0,0]
         return self[i1:i2]
 
+    def __mul__(self, x):
+        return self.copy(data=self.data * x)
+
+    def __truediv__(self, x):
+        return self.copy(data=self.data / x)
+
+    def __add__(self, x):
+        return self.copy(data=self.data + x)
+
+    def __sub__(self, x):
+        return self.copy(data=self.data - x)
+
 
 class TraceView(Trace):
     def __init__(self, trace, sl):
         self._parent_trace = trace
         self._view_slice = sl
-        data = trace.data[self._view_slice]
-        tvals = trace.time_values[self._view_slice]
-        meta = {k:trace.meta[k] for k in ['dt', 'sample_rate', 'start_time', 'units', 'channel_id']}
-        Trace.__init__(self, data, time_values=tvals, recording=trace.recording, **meta)
+        inds = sl.indices(len(trace))
+        data = trace.data[sl]
+        meta = {k:trace.meta[k] for k in ['dt', 'sample_rate', 'start_time', 'units', 'channel_id', 't0']}
+        if trace._time_values is not None:
+            tvals = trace.time_values[sl]
+            Trace.__init__(self, data, time_values=tvals, recording=trace.recording, **meta)
+        else:
+            meta['t0'] = trace.t0 + inds[0] * trace.dt
+            Trace.__init__(self, data, recording=trace.recording, **meta)
         
+
+class TraceGroup(object):
+    def __init__(self, traces=None):
+        self.traces = []
+        if traces is not None:
+            self.extend(traces)
+            
+    def __len__(self):
+        return len(self.traces)
+    
+    def append(self, trace):
+        self.traces.append(trace)
+        
+    def extend(self, traces):
+        self.traces.extend(traces)
+        
+    def mean(self):
+        return trace_mean(self.traces)
+
+
+def trace_mean(traces):
+    """Return the mean of a list of traces.
+
+    Downsamples to the minimum rate and clips ragged edges.
+    """
+    max_dt = max([trace.dt for trace in traces])
+    downsampled = [trace.downsample(n=int(max_dt/trace.dt)) for trace in traces]
+    avg = ragged_mean([d.data for d in downsampled], method='clip')
+    tvals = downsampled[0].time_values[:len(avg)]
+    return Trace(avg, time_values=tvals)
+
 
 class DAQRecording(Recording):
     """Input from / output to multiple channels on a data acquisition device.
