@@ -67,4 +67,5 @@ class PatchClampTestPulse(PatchClampRecording):
         """
         return self._parent_recording
 
-    
+    def _analyze(self):
+        pass

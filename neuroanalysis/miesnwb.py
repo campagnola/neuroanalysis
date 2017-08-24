@@ -4,7 +4,8 @@ from collections import OrderedDict
 import numpy as np
 import h5py
 
-from .data import Experiment, SyncRecording, PatchClampRecording, Trace, PatchClampTestPulse
+from .data import Experiment, SyncRecording, PatchClampRecording, Trace
+from .test_pulse import PatchClampTestPulse
 
 
 class MiesNwb(Experiment):
