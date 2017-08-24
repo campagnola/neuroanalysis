@@ -4,7 +4,7 @@ from collections import OrderedDict
 import numpy as np
 import h5py
 
-from .data import Experiment, SyncRecording, PatchClampRecording, Trace
+from .data import Experiment, SyncRecording, PatchClampRecording, Trace, PatchClampTestPulse
 
 
 class MiesNwb(Experiment):
@@ -272,6 +272,40 @@ class MiesRecording(PatchClampRecording):
         """The raw HDF5 data containing the stimulus command 
         """
         return self._nwb.hdf['stimulus/presentation/data_%05d_DA%d/data' % (self._trace_id[0], self.da_chan())]
+
+    @property
+    def nearest_test_pulse(self):
+        """The test pulse that was acquired nearest to this recording.
+        """
+        # Maybe we could point to a nearby TP if there was none inserted?
+        return self.inserted_test_pulse
+    
+    @property
+    def inserted_test_pulse(self):
+        """Return the test pulse inserted at the beginning of the recording,
+        or None if no pulse was inserted.
+        """
+        if self._inserted_test_pulse is None:
+            if self.meta['notebook']['TP Insert Checkbox'] != 1.0:
+                return None
+            
+            # get start/stop indices of the test pulse region
+            bdur = pdur / (1.0 - 2. * self.meta['notebook']['TP Baseline Fraction'])
+            tdur = pdur + 2 * bdur
+            start = 0
+            stop = start + int(tdur / pri.dt)
+            
+            tp = PatchClampTestPulse(self, indices=(start, stop))
+            
+            # Record amplitude as specified by MIES
+            if self.clamp_mode == 'vc':
+                amp = self.meta['notebook']['TP Amplitude VC'] * 1e-3
+            else:
+                amp = self.meta['notebook']['TP Amplitude IC'] * 1e-12
+            tp._meta['mies_pulse_amplitude'] = amp
+            
+            self._inserted_test_pulse = tp
+        return self._inserted_test_pulse
 
     def _get_stim_data(self):
         scale = 1e-3 if self.clamp_mode == 'vc' else 1e-12

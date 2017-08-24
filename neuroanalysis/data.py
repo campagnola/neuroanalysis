@@ -558,6 +558,22 @@ class Trace(Container):
         raise TypeError("No sample timing is specified for this trace.")
 
     @property
+    def regularly_sampled(self):
+        """Boolean indicating whether the samples in this Trace have equal
+        time intervals.
+        
+        If either dt or sample_rate was specified for this trace, then this
+        property is True. If only time values were given, then this property
+        is True if the intervals between samples differ by less than 1%.
+        """
+        if self._meta['dt'] is not None or self._meta['sample_rate'] is not None:
+            return True
+        
+        tvals = self.time_values
+        dt = np.diff(dt)
+        return np.all(dt - dt[0] < dt.mean() * 0.01)
+
+    @property
     def units(self):
         return self._meta['units']
 
@@ -639,8 +655,18 @@ class Trace(Container):
             dt = dt * n
         
         return self.copy(data=data, time_values=tvals, dt=dt)
-        
-    
+
+    def time_slice(self, start, stop):
+        """Return a view of this trace with a specified start/stop time.
+        """
+        if self.regularly_sampled:
+            i1 = int(start / self.dt)
+            i2 = int(stop / self.dt)
+        else:
+            i1 = np.argwhere(self.time_values >= start)[0,0]
+            i2 = np.argwhere(self.time_values >= stop)[0,0]
+        return self[i1:i2]
+
 
 class TraceView(Trace):
     def __init__(self, trace, sl):
@@ -651,40 +677,6 @@ class TraceView(Trace):
         meta = {k:trace.meta[k] for k in ['dt', 'sample_rate', 'start_time', 'units', 'channel_id']}
         Trace.__init__(self, data, time_values=tvals, recording=trace.recording, **meta)
         
-
-# TODO: this class should not be a subclass of PatchClampRecording
-# Instead, it should have a PatchClampRecording instance as an attribute.
-class PatchClampTestPulse(PatchClampRecording):    
-    @property
-    def access_resistance(self):
-        """The access resistance at the time of this recording.
-
-        This value may be calculated from a test pulse found within the recording,
-        or from data collected shortly before/after this recording, or it may
-        be None if the value is not known.
-        """
-        return None
-        
-    @property
-    def input_resistance(self):
-        """The input resistance of the cell at the time of this recording.
-
-        This value may be calculated from a test pulse found within the recording,
-        or from data collected shortly before/after this recording, or it may
-        be None if the value is not known.
-        """
-        return None
-    
-    @property
-    def capacitance(self):
-        """The capacitance of the cell at the time of this recording.
-
-        This value may be calculated from a test pulse found within the recording,
-        or from data collected shortly before/after this recording, or it may
-        be None if the value is not known.
-        """
-        return None
-
 
 class DAQRecording(Recording):
     """Input from / output to multiple channels on a data acquisition device.
