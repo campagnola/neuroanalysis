@@ -20,7 +20,7 @@ from __future__ import division
 import numpy as np
 from . import util
 from collections import OrderedDict
-
+from .stats import ragged_mean
 
 
 class Container(object):
@@ -558,6 +558,22 @@ class Trace(Container):
         raise TypeError("No sample timing is specified for this trace.")
 
     @property
+    def regularly_sampled(self):
+        """Boolean indicating whether the samples in this Trace have equal
+        time intervals.
+        
+        If either dt or sample_rate was specified for this trace, then this
+        property is True. If only time values were given, then this property
+        is True if the intervals between samples differ by less than 1%.
+        """
+        if self._meta['dt'] is not None or self._meta['sample_rate'] is not None:
+            return True
+        
+        tvals = self.time_values
+        dt = np.diff(dt)
+        return np.all(dt - dt[0] < dt.mean() * 0.01)
+
+    @property
     def units(self):
         return self._meta['units']
 
@@ -639,51 +655,75 @@ class Trace(Container):
             dt = dt * n
         
         return self.copy(data=data, time_values=tvals, dt=dt)
-        
-    
+
+    def time_slice(self, start, stop):
+        """Return a view of this trace with a specified start/stop time.
+        """
+        if self.regularly_sampled:
+            i1 = int(start / self.dt)
+            i2 = int(stop / self.dt)
+        else:
+            i1 = np.argwhere(self.time_values >= start)[0,0]
+            i2 = np.argwhere(self.time_values >= stop)[0,0]
+        return self[i1:i2]
+
+    def __mul__(self, x):
+        return self.copy(data=self.data * x)
+
+    def __truediv__(self, x):
+        return self.copy(data=self.data / x)
+
+    def __add__(self, x):
+        return self.copy(data=self.data + x)
+
+    def __sub__(self, x):
+        return self.copy(data=self.data - x)
+
 
 class TraceView(Trace):
     def __init__(self, trace, sl):
         self._parent_trace = trace
         self._view_slice = sl
-        data = trace.data[self._view_slice]
-        tvals = trace.time_values[self._view_slice]
-        meta = {k:trace.meta[k] for k in ['dt', 'sample_rate', 'start_time', 'units', 'channel_id']}
-        Trace.__init__(self, data, time_values=tvals, recording=trace.recording, **meta)
+        inds = sl.indices(len(trace))
+        data = trace.data[sl]
+        meta = {k:trace.meta[k] for k in ['dt', 'sample_rate', 'start_time', 'units', 'channel_id', 't0']}
+        if trace._time_values is not None:
+            tvals = trace.time_values[sl]
+            Trace.__init__(self, data, time_values=tvals, recording=trace.recording, **meta)
+        else:
+            meta['t0'] = trace.t0 + inds[0] * trace.dt
+            Trace.__init__(self, data, recording=trace.recording, **meta)
         
 
-# TODO: this class should not be a subclass of PatchClampRecording
-# Instead, it should have a PatchClampRecording instance as an attribute.
-class PatchClampTestPulse(PatchClampRecording):    
-    @property
-    def access_resistance(self):
-        """The access resistance at the time of this recording.
-
-        This value may be calculated from a test pulse found within the recording,
-        or from data collected shortly before/after this recording, or it may
-        be None if the value is not known.
-        """
-        return None
-        
-    @property
-    def input_resistance(self):
-        """The input resistance of the cell at the time of this recording.
-
-        This value may be calculated from a test pulse found within the recording,
-        or from data collected shortly before/after this recording, or it may
-        be None if the value is not known.
-        """
-        return None
+class TraceGroup(object):
+    def __init__(self, traces=None):
+        self.traces = []
+        if traces is not None:
+            self.extend(traces)
+            
+    def __len__(self):
+        return len(self.traces)
     
-    @property
-    def capacitance(self):
-        """The capacitance of the cell at the time of this recording.
+    def append(self, trace):
+        self.traces.append(trace)
+        
+    def extend(self, traces):
+        self.traces.extend(traces)
+        
+    def mean(self):
+        return trace_mean(self.traces)
 
-        This value may be calculated from a test pulse found within the recording,
-        or from data collected shortly before/after this recording, or it may
-        be None if the value is not known.
-        """
-        return None
+
+def trace_mean(traces):
+    """Return the mean of a list of traces.
+
+    Downsamples to the minimum rate and clips ragged edges.
+    """
+    max_dt = max([trace.dt for trace in traces])
+    downsampled = [trace.downsample(n=int(max_dt/trace.dt)) for trace in traces]
+    avg = ragged_mean([d.data for d in downsampled], method='clip')
+    tvals = downsampled[0].time_values[:len(avg)]
+    return Trace(avg, time_values=tvals)
 
 
 class DAQRecording(Recording):
