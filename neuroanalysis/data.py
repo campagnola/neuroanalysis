@@ -472,8 +472,22 @@ class Trace(Container):
     """
     def __init__(self, data=None, dt=None, t0=None, sample_rate=None, start_time=None, time_values=None, units=None, channel_id=None, recording=None, **meta):
         Container.__init__(self)
-        if time_values is not None and t0 is not None and t0 != time_values[0]:
-            raise Exception("t0 must be equal to time_values[0] if both are specified")
+        
+        if data is not None and data.ndim != 1:
+            raise ValueError("data must be a 1-dimensional array.")
+        
+        if time_values is not None:
+            if data is not None and time_values.shape != data.shape:
+                raise ValueError("time_values must have the same shape as data.")
+            if dt is not None:
+                raise TypeError("Cannot specify both time_values and dt.")
+            if sample_rate is not None:
+                raise TypeError("Cannot specify both time_values and sample_rate.")
+            if t0 is not None:
+                raise TypeError("Cannot specify both time_values and t0.")
+
+        if dt is not None and sample_rate is not None:
+            raise TypeError("Cannot specify both sample_rate and dt.")
             
         self._data = data
         self._meta = OrderedDict([
@@ -486,18 +500,32 @@ class Trace(Container):
         ])
         self._meta.update(meta)
         self._time_values = time_values
+        self._generated_time_values = None
         self._recording = util.WeakRef(recording)
         
     @property
     def data(self):
+        """The array of sample values.
+        """
         return self._data
         
     @property
     def start_time(self):
+        """The clock time (seconds since epoch) corresponding to the sample
+        where t=0. 
+        
+        If self.t0 is equal to 0, then start_time is the clock time of the
+        first sample.
+        """
         return self._meta['start_time']
     
     @property
     def sample_rate(self):
+        """The sample rate for this Trace.
+        
+        If no sample rate was specified, then this value is calculated from
+        self.dt.
+        """
         rate = self._meta['sample_rate']
         if rate is not None:
             return rate
@@ -506,6 +534,18 @@ class Trace(Container):
 
     @property
     def dt(self):
+        """The time step between samples for this Trace.
+        
+        If no time step was specified, then this value is calculated from
+        self.sample_rate.
+        
+        If both dt and sample_rate were not specified, then this value
+        is calculated as the difference between the first two items in
+        time_values.
+        
+        If no timing information was specified at all, then accessing this
+        property raises TypeError.
+        """
         # need to be very careful about how we calculate dt and sample rate
         # to avoid fp errors.
         dt = self._meta['dt']
@@ -527,6 +567,10 @@ class Trace(Container):
 
     @property
     def t0(self):
+        """The value of the first item in time_values.
+        
+        Setting this property causes the entire array of time values to shift.
+        """
         t0 = self._meta['t0']
         if t0 is not None:
             return t0
@@ -536,26 +580,39 @@ class Trace(Container):
     
     @t0.setter
     def t0(self, t0):
-        self._meta['t0'] = t0
-        if self._time_values is not None:
+        if self._time_values is not None and self._time_values[0] != t0:
             self._time_values = self._time_values + (t0 - self._time_values[0])
+        else:
+            self._meta['t0'] = t0
+            self._generated_time_values = None
     
     @property
     def time_values(self):
+        """An array of sample time values.
+        
+        Time values are specified in seconds relative to start_time.
+        
+        If no sample time values were provided for this Trace, then the array
+        is automatically generated based on other timing metadata (t0, dt,
+        sample_rate).
+        
+        If no timing information at all was specified for this Trace, then
+        accessing this property raises TypeError.
+        """
         if self._time_values is not None:
             return self._time_values
         
-        dt = self._meta['dt']
-        if dt is not None:
-            self._time_values = np.arange(len(self.data)) * dt
-            return self._time_values
+        if self._generated_time_values is None:
+            dt = self._meta['dt']
+            rate = self._meta['sample_rate']
+            if dt is not None:
+                self._generated_time_values = np.arange(len(self.data)) * dt
+            elif rate is not None:
+                self._generated_time_values = np.arange(len(self.data)) * (1.0 / rate)
+            else:
+                raise TypeError("No sample timing is specified for this trace.")
         
-        rate = self._meta['sample_rate']
-        if rate is not None:
-            self._time_values = np.arange(len(self.data)) * (1.0 / rate)
-            return self._time_values
-        
-        raise TypeError("No sample timing is specified for this trace.")
+        return self._generated_time_values
 
     @property
     def regularly_sampled(self):
@@ -565,13 +622,35 @@ class Trace(Container):
         If either dt or sample_rate was specified for this trace, then this
         property is True. If only time values were given, then this property
         is True if the intervals between samples differ by less than 1%.
+        
+        If no sample timing was specified for this Trace, then this property
+        is False.
         """
-        if self._meta['dt'] is not None or self._meta['sample_rate'] is not None:
+        if not self.has_timing:
+            return False
+        
+        if not self.has_time_values:
             return True
         
         tvals = self.time_values
-        dt = np.diff(dt)
+        dt = np.diff(tvals)
         return np.all(dt - dt[0] < dt.mean() * 0.01)
+
+    @property
+    def has_timing(self):
+        """Boolean indicating whether any timing information was specified for
+        this Trace.
+        """
+        return (self.has_time_values or 
+                self._meta['dt'] is not None or 
+                self._meta['sample_rate'] is not None)
+
+    @property
+    def has_time_values(self):
+        """Boolean indicating whether an array of time values was explicitly
+        specified for this Trace.
+        """
+        return self._time_values is not None
 
     @property
     def units(self):
@@ -601,6 +680,22 @@ class Trace(Container):
         return self._recording()
 
     def copy(self, data=None, time_values=None, **kwds):
+        """Return a copy of this Trace.
+        
+        The new Trace will have the same data, timing information, and metadata
+        unless otherwise specified in the arguments.
+        
+        Parameters
+        ----------
+        data : array | None
+            If specified, sets the data array for the new Trace.
+        time_values : array | None
+            If specified, sets the time_values array for the new Trace.
+        kwds :
+            All extra keyword arguments will overwrite metadata properties.
+            These include dt, sample_rate, t0, start_time, units, and
+            others.
+        """
         if data is None:
             data = self.data.copy()
         
@@ -636,6 +731,7 @@ class Trace(Container):
         f : float
             (optional) desired target sample rate
         """
+        # choose downsampling factor
         if None not in (f, n):
             raise TypeError("Must specify either n or f (not both).")
         if n is None:
@@ -646,15 +742,22 @@ class Trace(Container):
             return self
         if n <= 0:
             raise Exception("Invalid downsampling factor: %d" % n)
+        
+        # downsample
         data = util.downsample(self.data, n, axis=0)
+        
+        # handle timing
         tvals = self._time_values
         if tvals is not None:
             tvals = tvals[::n]
         dt = self._meta['dt']
         if dt is not None:
             dt = dt * n
+        sr = self._meta['sample_rate']
+        if sr is not None:
+            sr = float(sr) / n
         
-        return self.copy(data=data, time_values=tvals, dt=dt)
+        return self.copy(data=data, time_values=tvals, dt=dt, sample_rate=sr)
 
     def time_slice(self, start, stop):
         """Return a view of this trace with a specified start/stop time.
@@ -687,15 +790,15 @@ class TraceView(Trace):
         inds = sl.indices(len(trace))
         data = trace.data[sl]
         meta = {k:trace.meta[k] for k in ['dt', 'sample_rate', 'start_time', 'units', 'channel_id', 't0']}
-        if trace._time_values is not None:
+        if trace.has_time_values:
             tvals = trace.time_values[sl]
             Trace.__init__(self, data, time_values=tvals, recording=trace.recording, **meta)
         else:
             meta['t0'] = trace.t0 + inds[0] * trace.dt
             Trace.__init__(self, data, recording=trace.recording, **meta)
-        
 
-class TraceGroup(object):
+
+class TraceList(object):
     def __init__(self, traces=None):
         self.traces = []
         if traces is not None:
@@ -711,19 +814,21 @@ class TraceGroup(object):
         self.traces.extend(traces)
         
     def mean(self):
-        return trace_mean(self.traces)
+        """Return a trace with data averaged from all traces in this group.
 
-
-def trace_mean(traces):
-    """Return the mean of a list of traces.
-
-    Downsamples to the minimum rate and clips ragged edges.
-    """
-    max_dt = max([trace.dt for trace in traces])
-    downsampled = [trace.downsample(n=int(max_dt/trace.dt)) for trace in traces]
-    avg = ragged_mean([d.data for d in downsampled], method='clip')
-    tvals = downsampled[0].time_values[:len(avg)]
-    return Trace(avg, time_values=tvals)
+        Downsamples to the minimum rate and clips ragged edges.
+        """
+        max_dt = max([trace.dt for trace in self.traces])
+        downsampled = [trace.downsample(n=int(np.round(max_dt/trace.dt))) for trace in self.traces]
+        avg = ragged_mean([d.data for d in downsampled], method='clip')
+        
+        ds0 = downsampled[0]
+        if ds0.has_time_values:
+            tvals = ds0.time_values[:len(avg)]
+        else:
+            tvals = None
+        
+        return ds0.copy(data=avg, time_values=tvals)
 
 
 class DAQRecording(Recording):

@@ -336,8 +336,11 @@ def exp_deconvolve(trace, tau):
     dt = trace.dt
     arr = trace.data
     deconv = arr[:-1] + (tau / dt) * (arr[1:] - arr[:-1])
-    return trace.copy(data=deconv, time_values=trace.time_values[:-1])
-
+    if trace.has_time_values:
+        # data is one sample shorter; clip time values to match.
+        return trace.copy(data=deconv, time_values=trace.time_values[:-1])
+    else:
+        return trace.copy(data=deconv)
     
 def exp_reconvolve(trace, tau):
     # equivalent to subtracting an exponential decay from the original unconvolved signal
