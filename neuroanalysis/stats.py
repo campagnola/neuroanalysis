@@ -89,7 +89,7 @@ def binomial_sliding_window(x, success, window, spacing=None, alpha=0.05):
     return ci_xvals, prop, lower, upper
 
 
-def ragged_mean(arrays, method='pad'):
+def ragged_mean(arrays, method='clip'):
     """Return the mean of a list of arrays, where each array may have 
     different length.
     
@@ -97,10 +97,11 @@ def ragged_mean(arrays, method='pad'):
     ----------
     arrays : list
         A list of arrays to be averaged
-    method : "pad" | "clip"
-        If "pad", then the arrays are all padded to the maximum length with NaN.
+    method : "clip" | "pad"
         If "clip", then the arrays are truncated to the minimum length.
+        If "pad", then the arrays are all padded to the maximum length with NaN.
     """
+    assert len(arrays) > 0
     arrays = arrays[:]
     
     if method == 'pad':

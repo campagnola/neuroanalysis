@@ -3,7 +3,7 @@ from pyqtgraph.Qt import QtGui, QtCore
 import pyqtgraph.parametertree as pt
 from scipy.ndimage import gaussian_filter
 
-from ..filter import remove_artifacts
+from ..filter import remove_artifacts, bessel_filter
 
 
 class SignalFilter(QtCore.QObject):
@@ -13,14 +13,16 @@ class SignalFilter(QtCore.QObject):
     """
     def __init__(self):
         self.params = pt.Parameter.create(name='filter', type='bool', value=True, children=[
-            {'name': 'sigma', 'type': 'float', 'value': 200e-6, 'step': 1e-5, 'limits': [0, None], 'suffix': 's', 'siPrefix': True},
+            #{'name': 'filter type', 'type': 'list', 'values': ['bessel', 'butterworth']},
+            {'name': 'cutoff', 'type': 'float', 'value': 1000, 'step': 0.5, 'minStep': 1e-3, 'dec': True, 'limits': [0, None], 'suffix': 'Hz', 'siPrefix': True},
+            {'name': 'order', 'type': 'int', 'value': 4, 'step': 1, 'limits': [1, None]},
+            {'name': 'passband', 'type': 'list', 'values': ['low', 'high']},
         ])
         
     def process(self, trace):
         if self.params.value() is False:
             return trace
-        data = gaussian_filter(trace.data, self.params['sigma'] / trace.dt)
-        return trace.copy(data=data)
+        return bessel_filter(trace, cutoff=self.params['cutoff'], order=self.params['order'], btype=self.params['passband'])
         
 
 class ArtifactRemover(QtCore.QObject):

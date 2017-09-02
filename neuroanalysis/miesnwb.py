@@ -5,6 +5,7 @@ import numpy as np
 import h5py
 
 from .data import Experiment, SyncRecording, PatchClampRecording, Trace
+from .test_pulse import PatchClampTestPulse
 
 
 class MiesNwb(Experiment):
@@ -31,9 +32,10 @@ class MiesNwb(Experiment):
         if self._notebook is None:
             # collect all lab notebook entries
             nb_entries = OrderedDict()
-            nb_keys = self.hdf['general']['labnotebook']['ITC1600_Dev_0']['numericalKeys'][0]
+            device = self.hdf['general/devices'].keys()[0].split('_',1)[-1]
+            nb_keys = self.hdf['general']['labnotebook'][device]['numericalKeys'][0]
             nb_fields = OrderedDict([(k, i) for i,k in enumerate(nb_keys)])
-            nb = self.hdf['general']['labnotebook']['ITC1600_Dev_0']['numericalValues']
+            nb = self.hdf['general']['labnotebook'][device]['numericalValues']
 
             # EntrySourceType field is needed to distinguish between records created by TP vs sweep
             entry_source_type_index = nb_fields.get('EntrySourceType', None)
@@ -66,18 +68,26 @@ class MiesNwb(Experiment):
                 sweep_num = int(sweep_num)
                 # each sweep gets multiple nb records; for each field we use the last non-nan value in any record
                 if sweep_num not in nb_entries:
-                    nb_entries[sweep_num]= np.array(rec)
+                    nb_entries[sweep_num] = np.array(rec)
                 else:
                     mask = ~np.isnan(rec)
                     nb_entries[sweep_num][mask] = rec[mask]
 
             for swid, entry in nb_entries.items():
-                # last column applies to all channels
+                # last column is "global"; applies to all channels
                 mask = ~np.isnan(entry[:,8])
                 entry[mask] = entry[:,8:9][mask]
     
                 # first 4 fields of first column apply to all channels
                 entry[:4] = entry[:4, 0:1]
+
+                # async AD fields (notably used to record temperature) appear
+                # only in column 0, but might move to column 8 later? Since these
+                # are not channel-specific, we'll copy them to all channels
+                for i,k in enumerate(nb_keys):
+                    if not k.startswith('Async AD '):
+                        continue
+                    entry[i] = entry[i, 0]
 
                 # convert to list-o-dicts
                 meta = []
@@ -96,11 +106,14 @@ class MiesNwb(Experiment):
         if self._sweeps is None:
             sweeps = set()
             for k in self.hdf['acquisition/timeseries'].keys():
-                a, b, c = k.split('_')
+                a, b, c = k.split('_')[:3] #discard anything past AD# channel
                 sweeps.add(b)
-            self._sweeps = [MiesSyncRecording(self, int(sweep_id)) for sweep_id in sorted(list(sweeps))]
+            self._sweeps = [self.create_sync_recording(int(sweep_id)) for sweep_id in sorted(list(sweeps))]
         return self._sweeps
     
+    def create_sync_recording(self, sweep_id):
+        return MiesSyncRecording(self, sweep_id)
+
     def close(self):
         self.hdf.close()
         self.hdf = None
@@ -261,6 +274,40 @@ class MiesRecording(PatchClampRecording):
         """
         return self._nwb.hdf['stimulus/presentation/data_%05d_DA%d/data' % (self._trace_id[0], self.da_chan())]
 
+    @property
+    def nearest_test_pulse(self):
+        """The test pulse that was acquired nearest to this recording.
+        """
+        # Maybe we could point to a nearby TP if there was none inserted?
+        return self.inserted_test_pulse
+    
+    @property
+    def inserted_test_pulse(self):
+        """Return the test pulse inserted at the beginning of the recording,
+        or None if no pulse was inserted.
+        """
+        if self._inserted_test_pulse is None:
+            if self.meta['notebook']['TP Insert Checkbox'] != 1.0:
+                return None
+            
+            # get start/stop indices of the test pulse region
+            bdur = pdur / (1.0 - 2. * self.meta['notebook']['TP Baseline Fraction'])
+            tdur = pdur + 2 * bdur
+            start = 0
+            stop = start + int(tdur / pri.dt)
+            
+            tp = PatchClampTestPulse(self, indices=(start, stop))
+            
+            # Record amplitude as specified by MIES
+            if self.clamp_mode == 'vc':
+                amp = self.meta['notebook']['TP Amplitude VC'] * 1e-3
+            else:
+                amp = self.meta['notebook']['TP Amplitude IC'] * 1e-12
+            tp._meta['mies_pulse_amplitude'] = amp
+            
+            self._inserted_test_pulse = tp
+        return self._inserted_test_pulse
+
     def _get_stim_data(self):
         scale = 1e-3 if self.clamp_mode == 'vc' else 1e-12
         return np.array(self.command_hdf) * scale
@@ -305,15 +352,19 @@ class MiesSyncRecording(SyncRecording):
         for k in self._nwb.hdf['acquisition/timeseries'].keys():
             if not k.startswith('data_%05d_' % sweep_id):
                 continue
-            chans.append(int(k.split('_')[-1][2:]))
+            chans.append(int(k.split('_')[2][2:]))
         self._ad_channels = sorted(chans)
         
         devs = OrderedDict()
+
         for ch in self._ad_channels:
-            rec = MiesRecording(self, sweep_id, ch)
+            rec = self.create_recording(sweep_id, ch)
             devs[rec.device_id] = rec
         SyncRecording.__init__(self, devs, parent=nwb)
         self._meta['sweep_id'] = sweep_id
+
+    def create_recording(self, sweep_id, ch):
+        return MiesRecording(self, sweep_id, ch)
 
     def __repr__(self):
         return "<%s sweep=%d>" % (self.__class__.__name__, self._sweep_id)

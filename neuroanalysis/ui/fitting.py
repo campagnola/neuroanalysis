@@ -40,7 +40,7 @@ class FitExplorer(QtGui.QWidget):
         
         for k in self.model.param_names:
             for pname in ['initial parameters', 'fit parameters']:
-                p = pg.parametertree.Parameter.create(name=k, type='float', value=0, dec=True, minStep=1e-12, step=0.2)
+                p = pg.parametertree.Parameter.create(name=k, type='float', value=0, dec=True, minStep=1e-12, step=0.2, delay=0)
                 self.params.child(pname).addChild(p)
                 
             p = ConstraintParameter(self.params.child('initial parameters', k))
@@ -51,6 +51,12 @@ class FitExplorer(QtGui.QWidget):
             self.set_fit(fit)
             
         self.ptree.setParameters(self.params, showTop=False)
+
+        for k in self.model.param_names:
+            for pname in ['initial parameters', 'fit parameters']:
+                param = self.params.child(pname, k)
+                spin = param.items.keys()[0].widget
+                spin.proxy.setDelay(0)
         
         self.update_plots()
         

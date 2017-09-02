@@ -15,11 +15,12 @@ systems.
 This abstraction layer also helps to enforce good coding practice by separating data representation,
 analysis, and visualization.
 """
+from __future__ import division
+
 import numpy as np
-import pandas
 from . import util
 from collections import OrderedDict
-
+from .stats import ragged_mean
 
 
 class Container(object):
@@ -136,6 +137,7 @@ class Experiment(Container):
             tr[k] = [m[k] for m in meta]
         
         # create a table
+        import pandas
         return pandas.DataFrame(tr)
 
     @property
@@ -246,7 +248,7 @@ class SyncRecording(Container):
     (for example, two patch-clamp amplifiers and a camera).
     """
     def __init__(self, recordings=None, parent=None):
-        self._parent = parent
+        self._parent = util.WeakRef(parent)
         self._recordings = recordings if recordings is not None else OrderedDict()
         Container.__init__(self)
 
@@ -278,7 +280,7 @@ class SyncRecording(Container):
 
     @property
     def parent(self):
-        return self._parent
+        return self._parent()
 
     @property
     def children(self):
@@ -377,13 +379,21 @@ class PatchClampRecording(Recording):
     * Minimum one recorded channel, possibly more
     * May include stimulus waveform
     * Metadata about amplifier state (filtering, gain, bridge balance, compensation, etc)
+    
+    Should have at least 'primary' and 'command' channels.
     """
     def __init__(self, *args, **kwds):
         meta = OrderedDict()
-        for k in ['clamp_mode', 'patch_mode', 'holding_potential', 'holding_current']:
+        for k in ['cell_id', 'clamp_mode', 'patch_mode', 'holding_potential', 'holding_current']:
             meta[k] = kwds.pop(k, None)
         Recording.__init__(self, *args, **kwds)
         self._meta.update(meta)
+        
+    @property
+    def cell_id(self):
+        """Uniquely identifies the cell attached in this recording.
+        """
+        return self._meta['cell_id']
         
     @property
     def clamp_mode(self):
@@ -406,6 +416,13 @@ class PatchClampRecording(Recording):
             return self._meta['holding_potential']
         else:
             return self._baseline_value()
+
+    def rounded_holding_potential(self, increment=5e-3):
+        """Return the holding potential rounded to the nearest increment.
+        
+        The default increment rounds to the nearest 5 mV.
+        """
+        return increment * np.round(self.holding_potential / increment)
 
     @property
     def holding_current(self):
@@ -453,52 +470,191 @@ class Trace(Container):
     Traces may specify units, a starting time, and either a sample period or an
     array of time values.
     """
-    def __init__(self, data=None, dt=None, start_time=None, time_values=None, units=None, channel_id=None, recording=None, **meta):
+    def __init__(self, data=None, dt=None, t0=None, sample_rate=None, start_time=None, time_values=None, units=None, channel_id=None, recording=None, **meta):
         Container.__init__(self)
+        
+        if data is not None and data.ndim != 1:
+            raise ValueError("data must be a 1-dimensional array.")
+        
+        if time_values is not None:
+            if data is not None and time_values.shape != data.shape:
+                raise ValueError("time_values must have the same shape as data.")
+            if dt is not None:
+                raise TypeError("Cannot specify both time_values and dt.")
+            if sample_rate is not None:
+                raise TypeError("Cannot specify both time_values and sample_rate.")
+            if t0 is not None:
+                raise TypeError("Cannot specify both time_values and t0.")
+
+        if dt is not None and sample_rate is not None:
+            raise TypeError("Cannot specify both sample_rate and dt.")
+            
         self._data = data
         self._meta = OrderedDict([
             ('start_time', start_time),
             ('dt', dt),
+            ('t0', t0),
+            ('sample_rate', sample_rate),
             ('units', units),
             ('channel_id', channel_id),
         ])
         self._meta.update(meta)
         self._time_values = time_values
+        self._generated_time_values = None
         self._recording = util.WeakRef(recording)
         
     @property
     def data(self):
+        """The array of sample values.
+        """
         return self._data
         
     @property
     def start_time(self):
+        """The clock time (seconds since epoch) corresponding to the sample
+        where t=0. 
+        
+        If self.t0 is equal to 0, then start_time is the clock time of the
+        first sample.
+        """
         return self._meta['start_time']
     
     @property
     def sample_rate(self):
-        if self._meta['dt'] is None:
-            raise TypeError("Trace sample rate was not specified.")
-        return 1.0 / self._meta['dt']
+        """The sample rate for this Trace.
+        
+        If no sample rate was specified, then this value is calculated from
+        self.dt.
+        """
+        rate = self._meta['sample_rate']
+        if rate is not None:
+            return rate
+        else:
+            return 1.0 / self.dt
 
     @property
     def dt(self):
-        if self._meta['dt'] is None:
-            # assume regular sampling
-            t = self.time_values
-            self._meta['dt'] = t[1] - t[0]
-        return self._meta['dt']
+        """The time step between samples for this Trace.
+        
+        If no time step was specified, then this value is calculated from
+        self.sample_rate.
+        
+        If both dt and sample_rate were not specified, then this value
+        is calculated as the difference between the first two items in
+        time_values.
+        
+        If no timing information was specified at all, then accessing this
+        property raises TypeError.
+        """
+        # need to be very careful about how we calculate dt and sample rate
+        # to avoid fp errors.
+        dt = self._meta['dt']
+        if dt is not None:
+            return dt
+        
+        rate = self._meta['sample_rate']
+        if rate is not None:
+            return 1.0 / rate
+        
+        t = self.time_values
+        if t is not None:
+            # assume regular sampling.
+            # don't cache this value; we want to remember whether the user 
+            # provided dt or samplerate
+            return t[1] - t[0]
+        
+        raise TypeError("No sample timing is specified for this trace.")
+
+    @property
+    def t0(self):
+        """The value of the first item in time_values.
+        
+        Setting this property causes the entire array of time values to shift.
+        """
+        t0 = self._meta['t0']
+        if t0 is not None:
+            return t0
+        if self._time_values is not None:
+            return self._time_values[0]
+        return 0
     
+    @t0.setter
+    def t0(self, t0):
+        if self._time_values is not None and self._time_values[0] != t0:
+            self._time_values = self._time_values + (t0 - self._time_values[0])
+        else:
+            self._meta['t0'] = t0
+            self._generated_time_values = None
+    
+    @property
+    def time_values(self):
+        """An array of sample time values.
+        
+        Time values are specified in seconds relative to start_time.
+        
+        If no sample time values were provided for this Trace, then the array
+        is automatically generated based on other timing metadata (t0, dt,
+        sample_rate).
+        
+        If no timing information at all was specified for this Trace, then
+        accessing this property raises TypeError.
+        """
+        if self._time_values is not None:
+            return self._time_values
+        
+        if self._generated_time_values is None:
+            dt = self._meta['dt']
+            rate = self._meta['sample_rate']
+            if dt is not None:
+                self._generated_time_values = np.arange(len(self.data)) * dt
+            elif rate is not None:
+                self._generated_time_values = np.arange(len(self.data)) * (1.0 / rate)
+            else:
+                raise TypeError("No sample timing is specified for this trace.")
+        
+        return self._generated_time_values
+
+    @property
+    def regularly_sampled(self):
+        """Boolean indicating whether the samples in this Trace have equal
+        time intervals.
+        
+        If either dt or sample_rate was specified for this trace, then this
+        property is True. If only time values were given, then this property
+        is True if the intervals between samples differ by less than 1%.
+        
+        If no sample timing was specified for this Trace, then this property
+        is False.
+        """
+        if not self.has_timing:
+            return False
+        
+        if not self.has_time_values:
+            return True
+        
+        tvals = self.time_values
+        dt = np.diff(tvals)
+        return np.all(dt - dt[0] < dt.mean() * 0.01)
+
+    @property
+    def has_timing(self):
+        """Boolean indicating whether any timing information was specified for
+        this Trace.
+        """
+        return (self.has_time_values or 
+                self._meta['dt'] is not None or 
+                self._meta['sample_rate'] is not None)
+
+    @property
+    def has_time_values(self):
+        """Boolean indicating whether an array of time values was explicitly
+        specified for this Trace.
+        """
+        return self._time_values is not None
+
     @property
     def units(self):
         return self._meta['units']
-
-    @property
-    def time_values(self):
-        if self._time_values is None:
-            if self._meta['dt'] is None:
-                raise TypeError("No time values or sample rate were specified for this Trace.")
-            self._time_values = np.arange(len(self.data)) * self.dt
-        return self._time_values
 
     @property
     def shape(self):
@@ -524,6 +680,22 @@ class Trace(Container):
         return self._recording()
 
     def copy(self, data=None, time_values=None, **kwds):
+        """Return a copy of this Trace.
+        
+        The new Trace will have the same data, timing information, and metadata
+        unless otherwise specified in the arguments.
+        
+        Parameters
+        ----------
+        data : array | None
+            If specified, sets the data array for the new Trace.
+        time_values : array | None
+            If specified, sets the time_values array for the new Trace.
+        kwds :
+            All extra keyword arguments will overwrite metadata properties.
+            These include dt, sample_rate, t0, start_time, units, and
+            others.
+        """
         if data is None:
             data = self.data.copy()
         
@@ -559,66 +731,104 @@ class Trace(Container):
         f : float
             (optional) desired target sample rate
         """
+        # choose downsampling factor
         if None not in (f, n):
             raise TypeError("Must specify either n or f (not both).")
         if n is None:
             if f is None:
                 raise TypeError("Must specify either n or f.")
-            n = self.sample_rate // f
+            n = int(np.round(self.sample_rate / f))
+        if n == 1:
+            return self
+        if n <= 0:
+            raise Exception("Invalid downsampling factor: %d" % n)
+        
+        # downsample
         data = util.downsample(self.data, n, axis=0)
+        
+        # handle timing
         tvals = self._time_values
         if tvals is not None:
             tvals = tvals[::n]
         dt = self._meta['dt']
         if dt is not None:
             dt = dt * n
+        sr = self._meta['sample_rate']
+        if sr is not None:
+            sr = float(sr) / n
         
-        return self.copy(data=data, time_values=tvals, dt=dt)
-        
-    
+        return self.copy(data=data, time_values=tvals, dt=dt, sample_rate=sr)
+
+    def time_slice(self, start, stop):
+        """Return a view of this trace with a specified start/stop time.
+        """
+        if self.regularly_sampled:
+            i1 = int(start / self.dt)
+            i2 = int(stop / self.dt)
+        else:
+            i1 = np.argwhere(self.time_values >= start)[0,0]
+            i2 = np.argwhere(self.time_values >= stop)[0,0]
+        return self[i1:i2]
+
+    def __mul__(self, x):
+        return self.copy(data=self.data * x)
+
+    def __truediv__(self, x):
+        return self.copy(data=self.data / x)
+
+    def __add__(self, x):
+        return self.copy(data=self.data + x)
+
+    def __sub__(self, x):
+        return self.copy(data=self.data - x)
+
 
 class TraceView(Trace):
     def __init__(self, trace, sl):
         self._parent_trace = trace
         self._view_slice = sl
-        data = trace.data[self._view_slice]
-        tvals = trace.time_values[self._view_slice]
-        meta = {k:trace.meta[k] for k in ['dt', 'start_time', 'units', 'channel_id']}
-        Trace.__init__(self, data, time_values=tvals, recording=trace.recording, **meta)
-        
+        inds = sl.indices(len(trace))
+        data = trace.data[sl]
+        meta = {k:trace.meta[k] for k in ['dt', 'sample_rate', 'start_time', 'units', 'channel_id', 't0']}
+        if trace.has_time_values:
+            tvals = trace.time_values[sl]
+            Trace.__init__(self, data, time_values=tvals, recording=trace.recording, **meta)
+        else:
+            meta['t0'] = trace.t0 + inds[0] * trace.dt
+            Trace.__init__(self, data, recording=trace.recording, **meta)
 
-# TODO: this class should not be a subclass of PatchClampRecording
-# Instead, it should have a PatchClampRecording instance as an attribute.
-class PatchClampTestPulse(PatchClampRecording):    
-    @property
-    def access_resistance(self):
-        """The access resistance at the time of this recording.
 
-        This value may be calculated from a test pulse found within the recording,
-        or from data collected shortly before/after this recording, or it may
-        be None if the value is not known.
-        """
-        return None
-        
-    @property
-    def input_resistance(self):
-        """The input resistance of the cell at the time of this recording.
-
-        This value may be calculated from a test pulse found within the recording,
-        or from data collected shortly before/after this recording, or it may
-        be None if the value is not known.
-        """
-        return None
+class TraceList(object):
+    def __init__(self, traces=None):
+        self.traces = []
+        if traces is not None:
+            self.extend(traces)
+            
+    def __len__(self):
+        return len(self.traces)
     
-    @property
-    def capacitance(self):
-        """The capacitance of the cell at the time of this recording.
+    def append(self, trace):
+        self.traces.append(trace)
+        
+    def extend(self, traces):
+        self.traces.extend(traces)
+        
+    def mean(self):
+        """Return a trace with data averaged from all traces in this group.
 
-        This value may be calculated from a test pulse found within the recording,
-        or from data collected shortly before/after this recording, or it may
-        be None if the value is not known.
+        Downsamples to the minimum rate and clips ragged edges.
         """
-        return None
+        max_dt = max([trace.dt for trace in self.traces])
+        downsampled = [trace.downsample(n=int(np.round(max_dt/trace.dt))) for trace in self.traces]
+        avg = ragged_mean([d.data for d in downsampled], method='clip')
+        
+        ds0 = downsampled[0]
+        if ds0.has_time_values:
+            tvals = ds0.time_values[:len(avg)]
+        else:
+            tvals = None
+        
+        return ds0.copy(data=avg, time_values=tvals)
 
 
 class DAQRecording(Recording):

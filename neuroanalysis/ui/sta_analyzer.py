@@ -34,7 +34,7 @@ class STAAnalyzer(QtGui.QWidget):
         
         # setup spike detector
         self.spike_detector = EventDetector()
-        self.spike_detector.params['gaussian sigma'] = 80e-3
+        self.spike_detector.params['filter', 'cutoff'] = 10
         self.spike_detector.params['deconv const'] = 700e-3
         self.spike_detector.params['threshold'] = 2
 
