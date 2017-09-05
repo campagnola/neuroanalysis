@@ -1,5 +1,7 @@
 import os
-from setuptools import setup
+from setuptools import setup, find_packages
+
+packages=find_packages('.')
 
 setup(
     name = "neuroanalysis",
@@ -10,7 +12,7 @@ setup(
     license = "MIT",
     keywords = "neuroscience analysis neurodata without borders nwb ",
     url = "http://github.com/aiephys/neuroanalysis",
-    packages=['neuroanalysis'],
+    packages=packages,
     classifiers=[
         "Development Status :: 3 - Alpha",
         "License :: OSI Approved :: MIT License",
