@@ -25,7 +25,7 @@ def detect_evoked_spike(data, pulse_edges, **kwds):
         raise ValueError("Unsupported clamp mode %s" % trace.clamp_mode)
 
 
-def detect_ic_evoked_spike(trace, pulse_edges, threshold=-10e-3, duration=3e-3):
+def detect_ic_evoked_spike(trace, pulse_edges, threshold=-10e-3, duration=3e-3, max_dvdt_search=1e-3):
     assert trace.data.ndim == 1
     pulse_edges = tuple(map(int, pulse_edges))  # make sure pulse_edges is (int, int)
     
@@ -43,12 +43,15 @@ def detect_ic_evoked_spike(trace, pulse_edges, threshold=-10e-3, duration=3e-3):
         # peak find failed--this can happen when all samples in
         # the chunk have the same value
         return None
-    
-    dvdt = np.diff(chunk[:peak_ind])
+
+    # In some rare cases, the stimulus causes a very high dvdt at the beginning of the pulse.
+    # We catch this by only searching for max dvdt within a certain window of the peak.
+    maxdvdt_start_index = max(0, peak_ind - int(max_dvdt_search / dt))
+    dvdt = np.diff(chunk[maxdvdt_start_index:peak_ind])
     rise_ind = np.argmax(dvdt)
     max_dvdt = dvdt[rise_ind]
     
-    return {'peak_index': peak_ind + pstart, 'rise_index': rise_ind + pstart,
+    return {'peak_index': peak_ind + pstart, 'rise_index': rise_ind + pstart + maxdvdt_start_index,
             'peak_val': peak_val, 'max_dvdt': max_dvdt}
 
 
