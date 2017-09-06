@@ -807,6 +807,12 @@ class TraceList(object):
     def __len__(self):
         return len(self.traces)
     
+    def __iter__(self):
+        return self.traces.__iter__()
+    
+    def __getitem__(self, i):
+        return self.traces.__getitem__(i)
+    
     def append(self, trace):
         self.traces.append(trace)
         
