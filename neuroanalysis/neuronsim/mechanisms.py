@@ -8,6 +8,7 @@ Luke Campagnola 2015
 
 from collections import OrderedDict
 import numpy as np
+import scipy.interpolate
 from ..units import *
 from .components import Mechanism, Channel
 
@@ -139,6 +140,44 @@ class PatchClamp(Mechanism):
         s = (t - vt1) / (vt2 - vt1)
         return v1 * (1-s) + v2 * s
         
+
+class Noise(Mechanism):
+    """Injects gaussian noise current.
+    
+    Note: This incurs a large overhead because it forces the integrator to use
+    very small timesteps.
+    """
+    
+    type = 'Inoise'
+    
+    def __init__(self, mean=0, stdev=5*pA, dt=100*us, **kwds):
+        init_state = OrderedDict([])
+        Mechanism.__init__(self, init_state, **kwds)
+        self.mean = mean
+        self.stdev = stdev
+        self.dt = dt
+        self._start_time = None
+        self._end_time = None
+        self._noise = None
+        
+    def current(self, state):
+        t = state['t']
+        if self._start_time is None or t > self._end_time:
+            self._generate_noise(t)
+        return self._noise(t)
+        
+    def derivatives(self, state):
+        return []
+        
+    def _generate_noise(self, t):
+        n = int(100*ms / self.dt)
+        padding = 10*ms
+        t = np.arange(n) * self.dt + (t - padding)
+        noise = np.random.normal(size=n, loc=self.mean, scale=self.stdev)
+        self._noise = scipy.interpolate.interp1d(t, noise)
+        self._start_time = t
+        self._end_time = t[-1] - padding
+
 
 class Leak(Channel):
     type = 'Ileak'

@@ -2,7 +2,7 @@ import numpy as np
 import pyqtgraph as pg
 
 import neuroanalysis.neuronsim as nsim
-from neuroanalysis.units import MOhm, ms, pA, mS, cm, mV, um
+from neuroanalysis.units import MOhm, ms, us, pA, mS, cm, mV, um
 
 
 
@@ -18,7 +18,8 @@ mechs = [
     nsim.Leak(gbar=0.3*mS/cm**2, erev=-75*mV),
     nsim.LGKfast(gbar=500*mS/cm**2),
     nsim.LGKslow(),
-    nsim.LGNa()
+    nsim.LGNa(),
+#    nsim.Noise(),  # adds realism, but slows down the integrator a lot.
 ]
 for m in mechs:
     soma.add(m)
