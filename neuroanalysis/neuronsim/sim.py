@@ -97,7 +97,6 @@ class Sim(object):
             o.update_state(result[-1, p:p+nvar])
             p += nvar
             
-        self._time = t[-1]
         self._last_run_time = t
         return SimState(difeq_vars, dep_vars, result.T, t=t)
 
@@ -105,21 +104,23 @@ class Sim(object):
         objs = self.all_objects().values()
         self._simstate.state = state
         self._simstate.extra['t'] = t
+        
+        # Record the time of the last simulated sample. Note that this is NOT
+        # the same as the last _requested_ sample; the integrator may go farther
+        # depending on its time step
+        self._time = t
+        
         d = []
         for o in objs:
             d.extend(o.derivatives(self._simstate))
             
         return d
 
-    def state(self):
-        """Return dictionary of all dependent and independent state
-        variables.
+    @property
+    def last_state(self):
+        """Return the last values of all state variables in a SimState object.
         """
-        state = {}
-        for o in self.all_objects():
-            for k,v in o.state(self._simstate).items():
-                state[k] = v
-        return state
+        return self._simstate
         
     
 class SimState(object):
