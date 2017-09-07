@@ -176,3 +176,15 @@ class Section(SimObject):
         """
         dv = self.derivatives(state)[0]
         return - self.cap * dv
+
+    def conductance(self, state):
+        """Return the total conductance of all channels in this section.
+        
+        This is for introspection; not used by the integrator.
+        """
+        g = 0
+        for mech in self.mechanisms:
+            if not isinstance(mech, Channel):
+                continue
+            g += mech.conductance(state)
+        return g
