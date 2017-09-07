@@ -239,6 +239,7 @@ class MiesRecording(PatchClampRecording):
         self._sweep = sweep
         self._nwb = sweep._nwb
         self._trace_id = (sweep_id, ad_chan)
+        self._inserted_test_pulse = None
         self._hdf_group = self._nwb.hdf['acquisition/timeseries/data_%05d_AD%d' % self._trace_id]
         self._da_chan = None
         headstage_id = int(self._hdf_group['electrode_name'].value[0].split('_')[1])
@@ -291,10 +292,11 @@ class MiesRecording(PatchClampRecording):
                 return None
             
             # get start/stop indices of the test pulse region
+            pdur = self.meta['notebook']['TP Pulse Duration'] / 1000.
             bdur = pdur / (1.0 - 2. * self.meta['notebook']['TP Baseline Fraction'])
             tdur = pdur + 2 * bdur
             start = 0
-            stop = start + int(tdur / pri.dt)
+            stop = start + int(tdur / self['primary'].dt)
             
             tp = PatchClampTestPulse(self, indices=(start, stop))
             
