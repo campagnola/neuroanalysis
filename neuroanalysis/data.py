@@ -378,13 +378,21 @@ class PatchClampRecording(Recording):
     * Current- or voltage-clamp mode
     * Minimum one recorded channel, possibly more
     * May include stimulus waveform
-    * Metadata about amplifier state (filtering, gain, bridge balance, compensation, etc)
+    * Metadata about amplifier state:
+        * clamp_mode ('ic' 'i0', or 'vc')
+        * holding potential (vc only)
+        * holding_current (ic only)
+        * bridge_balance (ic only)
+        * lpf_cutoff
+        * pipette_offset
     
     Should have at least 'primary' and 'command' channels.
     """
     def __init__(self, *args, **kwds):
         meta = OrderedDict()
-        for k in ['cell_id', 'clamp_mode', 'patch_mode', 'holding_potential', 'holding_current']:
+        extra_meta = ['cell_id', 'clamp_mode', 'patch_mode', 'holding_potential', 'holding_current',
+                      'bridge_balance', 'lpf_cutoff', 'pipette_offset']
+        for k in extra_meta:
             meta[k] = kwds.pop(k, None)
         Recording.__init__(self, *args, **kwds)
         self._meta.update(meta)
