@@ -108,7 +108,7 @@ class PatchClamp(Mechanism):
                 # interpolate from holding into start of next command
                 v1 = hold
                 vt1 = start - dt
-                v2 = data[0]
+                v2 = data[0] + hold
                 vt2 = start
                 break
             elif i1 >= len(data):
@@ -116,11 +116,11 @@ class PatchClamp(Mechanism):
                 self.cmd_queue.pop(0)
                 continue
             else:
-                v1 = data[i1]
+                v1 = data[i1] + hold
                 vt1 = start + i1 * dt
                 if i1+1 < len(data):
                     # interpolate to next command point
-                    v2 = data[i1+1]
+                    v2 = data[i1+1] + hold
                     vt2 = vt1 + dt
                     break
                 else:
