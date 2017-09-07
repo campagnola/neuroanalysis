@@ -23,6 +23,7 @@ class Sim(object):
         self.temp = temp
         self.dt = dt
         self.odeint_args = {
+            'h0': 1*us,
             'hmax': 100*us,
             'rtol': 1e-6, 
             'atol': 1e-6, 

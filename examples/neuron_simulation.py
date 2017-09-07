@@ -1,9 +1,12 @@
+"""
+Demo of simple neuron simulator used for testing analysis routines.
+"""
+
 import numpy as np
 import pyqtgraph as pg
 
 import neuroanalysis.neuronsim as nsim
 from neuroanalysis.units import MOhm, ms, us, pA, mS, cm, mV, um
-
 
 
 # Initialize simulation container
