@@ -252,9 +252,15 @@ class MiesRecording(PatchClampRecording):
         nb = self._nwb.notebook()[int(self._trace_id[0])][headstage_id]
         self._meta['stim_name'] = self._hdf_group['stimulus_description'].value[0]
         self.meta['holding_potential'] = None if nb['V-Clamp Holding Level'] is None else nb['V-Clamp Holding Level'] * 1e-3
-        self.meta['holding_current'] = None if nb['I-Clamp Holding Level'] is None else nb['I-Clamp Holding Level'] * 1e-3
+        self.meta['holding_current'] = None if nb['I-Clamp Holding Level'] is None else nb['I-Clamp Holding Level'] * 1e-12
         self._meta['notebook'] = nb
-        self._meta['clamp_mode'] = 'vc' if nb['Clamp Mode'] == 0 else 'ic'
+        if nb['Clamp Mode'] == 0:
+            self._meta['clamp_mode'] = 'vc'
+        else:
+            self._meta['clamp_mode'] = 'ic'
+            self._meta['bridge_balance'] = 0 if nb['Bridge Bal Enable'] == 0.0 else nb['Bridge Bal Value']
+        self._meta['lpf_cutoff'] = nb['LPF Cutoff']
+        self._meta['pipette_offset'] = nb['Pipette Offset']
 
         self._channels['primary'] = MiesTrace(self, 'primary')
         self._channels['command'] = MiesTrace(self, 'command')
