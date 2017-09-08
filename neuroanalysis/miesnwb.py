@@ -258,9 +258,9 @@ class MiesRecording(PatchClampRecording):
             self._meta['clamp_mode'] = 'vc'
         else:
             self._meta['clamp_mode'] = 'ic'
-            self._meta['bridge_balance'] = 0 if nb['Bridge Bal Enable'] == 0.0 else nb['Bridge Bal Value']
+            self._meta['bridge_balance'] = 0 if nb['Bridge Bal Enable'] == 0.0 else nb['Bridge Bal Value'] * 1e6
         self._meta['lpf_cutoff'] = nb['LPF Cutoff']
-        self._meta['pipette_offset'] = nb['Pipette Offset']
+        self._meta['pipette_offset'] = nb['Pipette Offset'] * 1e-3
 
         self._channels['primary'] = MiesTrace(self, 'primary')
         self._channels['command'] = MiesTrace(self, 'command')
