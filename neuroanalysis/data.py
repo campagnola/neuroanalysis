@@ -614,9 +614,9 @@ class Trace(Container):
             dt = self._meta['dt']
             rate = self._meta['sample_rate']
             if dt is not None:
-                self._generated_time_values = np.arange(len(self.data)) * dt
+                self._generated_time_values = self.t0 + np.arange(len(self.data)) * dt
             elif rate is not None:
-                self._generated_time_values = np.arange(len(self.data)) * (1.0 / rate)
+                self._generated_time_values = self.t0 + np.arange(len(self.data)) * (1.0 / rate)
             else:
                 raise TypeError("No sample timing is specified for this trace.")
         
@@ -797,13 +797,17 @@ class TraceView(Trace):
         self._view_slice = sl
         inds = sl.indices(len(trace))
         data = trace.data[sl]
-        meta = {k:trace.meta[k] for k in ['dt', 'sample_rate', 'start_time', 'units', 'channel_id', 't0']}
+        meta = trace.meta.copy()
         if trace.has_time_values:
-            tvals = trace.time_values[sl]
-            Trace.__init__(self, data, time_values=tvals, recording=trace.recording, **meta)
-        else:
+            meta['time_values'] = trace.time_values[sl]
+        elif trace.has_timing:
             meta['t0'] = trace.t0 + inds[0] * trace.dt
-            Trace.__init__(self, data, recording=trace.recording, **meta)
+            
+        Trace.__init__(self, data, recording=trace.recording, **meta)
+
+    @property
+    def parent(self):
+        return self._parent_trace
 
 
 class TraceList(object):
