@@ -200,7 +200,6 @@ class PatchClampTestPulse(PatchClampRecording):
             'baseline_current': base_i,
         }
         self._fit_result = result
-        raise Exception()
     
     def plot(self):
         self.analysis

@@ -59,11 +59,15 @@ class ModelCell(object):
         channels = {'command': command, 'primary': recording, 'vsoma': response}
         kwds = {
             'clamp_mode': mode,
+            'bridge_balance': 0,
+            'lpf_cutoff': None,
+            'pipette_offset': 0,
         }
         if mode == 'ic':
             kwds['holding_current'] = self.clamp.holding['ic']
         elif mode == 'vc':
             kwds['holding_potential'] = self.clamp.holding['vc']
+            
         return PatchClampRecording(channels=channels, **kwds)
     
     def settle(self, t=1.0):
