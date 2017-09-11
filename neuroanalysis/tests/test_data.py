@@ -58,7 +58,17 @@ def test_trace_timing():
     assert view.dt == tr.dt
     assert view._meta['sample_rate'] is None
     assert not view.has_time_values
+
+    view = tr.time_slice(100*dt, 200*dt)
+    assert view.t0 == tr.time_values[100]
+    assert view.time_values[0] == view.t0
+    assert view.dt == tr.dt
+    assert view._meta['sample_rate'] is None
+    assert not view.has_time_values
     
+    # test nested view
+    view2 = view.time_slice(view.t0 + 20*dt, view.t0 + 50*dt)
+    assert view2.t0 == view.time_values[20] == tr.time_values[120]
     
     # trace with only sample_rate
     tr = Trace(a, sample_rate=sr)

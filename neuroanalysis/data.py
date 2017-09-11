@@ -769,13 +769,16 @@ class Trace(Container):
 
     def time_slice(self, start, stop):
         """Return a view of this trace with a specified start/stop time.
+        
+        Times are given relative to t0, and may be None to specify the
+        beginning or end of the trace.
         """
         if self.regularly_sampled:
-            i1 = int(start / self.dt)
-            i2 = int(stop / self.dt)
+            i1 = int((start - self.t0) / self.dt) if start is not None else None
+            i2 = int((stop - self.t0) / self.dt) if stop is not None else None
         else:
-            i1 = np.argwhere(self.time_values >= start)[0,0]
-            i2 = np.argwhere(self.time_values >= stop)[0,0]
+            i1 = np.argwhere(self.time_values >= start)[0,0] if start is not None else None
+            i2 = np.argwhere(self.time_values >= stop)[0,0] if stop is not None else None
         return self[i1:i2]
 
     def __mul__(self, x):
