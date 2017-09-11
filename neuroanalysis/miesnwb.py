@@ -239,6 +239,7 @@ class MiesRecording(PatchClampRecording):
         self._sweep = sweep
         self._nwb = sweep._nwb
         self._trace_id = (sweep_id, ad_chan)
+        self._inserted_test_pulse = None
         self._hdf_group = self._nwb.hdf['acquisition/timeseries/data_%05d_AD%d' % self._trace_id]
         self._da_chan = None
         headstage_id = int(self._hdf_group['electrode_name'].value[0].split('_')[1])
@@ -251,9 +252,15 @@ class MiesRecording(PatchClampRecording):
         nb = self._nwb.notebook()[int(self._trace_id[0])][headstage_id]
         self._meta['stim_name'] = self._hdf_group['stimulus_description'].value[0]
         self.meta['holding_potential'] = None if nb['V-Clamp Holding Level'] is None else nb['V-Clamp Holding Level'] * 1e-3
-        self.meta['holding_current'] = None if nb['I-Clamp Holding Level'] is None else nb['I-Clamp Holding Level'] * 1e-3
+        self.meta['holding_current'] = None if nb['I-Clamp Holding Level'] is None else nb['I-Clamp Holding Level'] * 1e-12
         self._meta['notebook'] = nb
-        self._meta['clamp_mode'] = 'vc' if nb['Clamp Mode'] == 0 else 'ic'
+        if nb['Clamp Mode'] == 0:
+            self._meta['clamp_mode'] = 'vc'
+        else:
+            self._meta['clamp_mode'] = 'ic'
+            self._meta['bridge_balance'] = 0 if nb['Bridge Bal Enable'] == 0.0 else nb['Bridge Bal Value'] * 1e6
+        self._meta['lpf_cutoff'] = nb['LPF Cutoff']
+        self._meta['pipette_offset'] = nb['Pipette Offset'] * 1e-3
 
         self._channels['primary'] = MiesTrace(self, 'primary')
         self._channels['command'] = MiesTrace(self, 'command')
@@ -291,10 +298,11 @@ class MiesRecording(PatchClampRecording):
                 return None
             
             # get start/stop indices of the test pulse region
+            pdur = self.meta['notebook']['TP Pulse Duration'] / 1000.
             bdur = pdur / (1.0 - 2. * self.meta['notebook']['TP Baseline Fraction'])
             tdur = pdur + 2 * bdur
             start = 0
-            stop = start + int(tdur / pri.dt)
+            stop = start + int(tdur / self['primary'].dt)
             
             tp = PatchClampTestPulse(self, indices=(start, stop))
             

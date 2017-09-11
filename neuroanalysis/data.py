@@ -378,13 +378,21 @@ class PatchClampRecording(Recording):
     * Current- or voltage-clamp mode
     * Minimum one recorded channel, possibly more
     * May include stimulus waveform
-    * Metadata about amplifier state (filtering, gain, bridge balance, compensation, etc)
+    * Metadata about amplifier state:
+        * clamp_mode ('ic' 'i0', or 'vc')
+        * holding potential (vc only)
+        * holding_current (ic only)
+        * bridge_balance (ic only)
+        * lpf_cutoff
+        * pipette_offset
     
     Should have at least 'primary' and 'command' channels.
     """
     def __init__(self, *args, **kwds):
         meta = OrderedDict()
-        for k in ['cell_id', 'clamp_mode', 'patch_mode', 'holding_potential', 'holding_current']:
+        extra_meta = ['cell_id', 'clamp_mode', 'patch_mode', 'holding_potential', 'holding_current',
+                      'bridge_balance', 'lpf_cutoff', 'pipette_offset']
+        for k in extra_meta:
             meta[k] = kwds.pop(k, None)
         Recording.__init__(self, *args, **kwds)
         self._meta.update(meta)
@@ -606,9 +614,9 @@ class Trace(Container):
             dt = self._meta['dt']
             rate = self._meta['sample_rate']
             if dt is not None:
-                self._generated_time_values = np.arange(len(self.data)) * dt
+                self._generated_time_values = self.t0 + np.arange(len(self.data)) * dt
             elif rate is not None:
-                self._generated_time_values = np.arange(len(self.data)) * (1.0 / rate)
+                self._generated_time_values = self.t0 + np.arange(len(self.data)) * (1.0 / rate)
             else:
                 raise TypeError("No sample timing is specified for this trace.")
         
@@ -761,13 +769,16 @@ class Trace(Container):
 
     def time_slice(self, start, stop):
         """Return a view of this trace with a specified start/stop time.
+        
+        Times are given relative to t0, and may be None to specify the
+        beginning or end of the trace.
         """
         if self.regularly_sampled:
-            i1 = int(start / self.dt)
-            i2 = int(stop / self.dt)
+            i1 = int((start - self.t0) / self.dt) if start is not None else None
+            i2 = int((stop - self.t0) / self.dt) if stop is not None else None
         else:
-            i1 = np.argwhere(self.time_values >= start)[0,0]
-            i2 = np.argwhere(self.time_values >= stop)[0,0]
+            i1 = np.argwhere(self.time_values >= start)[0,0] if start is not None else None
+            i2 = np.argwhere(self.time_values >= stop)[0,0] if stop is not None else None
         return self[i1:i2]
 
     def __mul__(self, x):
@@ -789,13 +800,17 @@ class TraceView(Trace):
         self._view_slice = sl
         inds = sl.indices(len(trace))
         data = trace.data[sl]
-        meta = {k:trace.meta[k] for k in ['dt', 'sample_rate', 'start_time', 'units', 'channel_id', 't0']}
+        meta = trace.meta.copy()
         if trace.has_time_values:
-            tvals = trace.time_values[sl]
-            Trace.__init__(self, data, time_values=tvals, recording=trace.recording, **meta)
-        else:
+            meta['time_values'] = trace.time_values[sl]
+        elif trace.has_timing:
             meta['t0'] = trace.t0 + inds[0] * trace.dt
-            Trace.__init__(self, data, recording=trace.recording, **meta)
+            
+        Trace.__init__(self, data, recording=trace.recording, **meta)
+
+    @property
+    def parent(self):
+        return self._parent_trace
 
 
 class TraceList(object):
