@@ -1,23 +1,29 @@
 import numpy as np
 from . import Sim, Section, Leak, LGKfast, LGKslow, LGNa, Noise, PatchClamp
 from ..data import Trace, PatchClampRecording
-from ..units import um, mS, mV, cm, MOhm
+from ..units import um, mS, uV, mV, pA, cm, MOhm, ms
 
 
 class ModelCell(object):
     """A simulated patch-clamped neuron for generating test data.
     """
-    def __init__(self, radius=6*um, r_access=10*MOhm):
+    def __init__(self):
         self.sim = Sim()
         self._is_settled = False
+        
+        # Add noise to recording
+        self.recording_noise = True
+        self.rec_noise_sigma = {'ic': 50*uV, 'vc': 5*pA}
 
         # Create a single compartment
+        radius = (5e-10 / (4*np.pi)) ** 0.5
         self.soma = Section(name='soma', radius=radius)
         self.sim.add(self.soma)
 
         # Add channels to the membrane
         self.mechs = {
-            'leak': Leak(gbar=0.6*mS/cm**2, erev=-75*mV),
+            'leak': Leak(gbar=1.0*mS/cm**2, erev=-75*mV),
+            'leak0': Leak(gbar=0, erev=0), # simulate dying cell
             'lgkfast': LGKfast(gbar=225*mS/cm**2),
             'lgkslow': LGKslow(gbar=0.225*mS/cm**2),
             'lgkna': LGNa(),
@@ -27,8 +33,17 @@ class ModelCell(object):
             self.soma.add(m)
 
         # Add a patch clamp electrode
-        self.clamp = PatchClamp(name='electrode', mode='ic', ra=r_access)
+        self.clamp = PatchClamp(name='electrode', mode='ic', ra=10*MOhm)
+        self.clamp.set_holding('vc', -75*mV)
         self.soma.add(self.clamp)
+        
+    def enable_mechs(self, mechs):
+        """Enable a specific set of mechanisms; disable all others.
+        """
+        for mech in self.mechs.values():
+            mech.enabled = False
+        for mech in mechs:
+            self.mechs[mech].enabled = True
 
     def test(self, command, mode):
         """Send a command (Trace) to the electrode and return a PatchClampRecording
@@ -50,11 +65,12 @@ class ModelCell(object):
         response = Trace(vm, time_values=t)
         pip = result['electrode.V'] if mode == 'ic' else result['electrode.I']
         
-        # Add in a little electrical recording noise
-        enoise = 50e-6 if mode == 'ic' else 5e-12
-        pip = pip + np.random.normal(size=len(pip), scale=enoise)
+        # Add in a little electrical recording noise        
+        if self.recording_noise:
+            enoise = self._rec_noise_sigma[mode]
+            pip = pip + np.random.normal(size=len(pip), scale=enoise)
         
-        recording = Trace(pip + enoise, time_values=t)
+        recording = Trace(pip, time_values=t)
         
         channels = {'command': command, 'primary': recording, 'vsoma': response}
         kwds = {
@@ -76,9 +92,10 @@ class ModelCell(object):
         if self._is_settled:
             return
         n = int(t / self.sim.dt)
+        noise_enabled = self.mechs['noise'].enabled
         self.mechs['noise'].enabled = False
-        self.sim.run(n, hmax=1e-3)
-        self.mechs['noise'].enabled = True
+        self.sim.run(n, hmax=1*ms)
+        self.mechs['noise'].enabled = noise_enabled
         self._is_settled = True
         
     def input_resistance(self):
@@ -89,5 +106,11 @@ class ModelCell(object):
         return self.soma.cap
 
     def resting_potential(self):
+        self.clamp.set_mode('ic')
         self.settle()
-        return self.sim.last_state['soma.V']
+        return self.sim.last_state['electrode.V']
+
+    def resting_current(self):
+        self.clamp.set_mode('vc')
+        self.settle()
+        return self.sim.last_state['electrode.I']

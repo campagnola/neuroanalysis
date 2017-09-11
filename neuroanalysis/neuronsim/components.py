@@ -184,7 +184,7 @@ class Section(SimObject):
         """
         g = 0
         for mech in self.mechanisms:
-            if not isinstance(mech, Channel):
+            if not isinstance(mech, Channel) or not mech.enabled:
                 continue
             g += mech.conductance(state)
         return g

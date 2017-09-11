@@ -132,13 +132,17 @@ class PatchClampTestPulse(PatchClampRecording):
                 'tau': (10e-3, 1e-3, 50e-3),
             }
             
-        fit_kws = {'xtol': 1e-3, 'maxfev': 200, 'nan_policy': 'omit'}
+        fit_kws = {'xtol': 1e-4, 'maxfev': 1000, 'nan_policy': 'omit'}
         model = Exp()
-        result = model.fit(pulse.data, x=pulse.time_values, fit_kws=fit_kws, params=params)
+        
+        # ignore initial transients when fitting
+        fit_region = pulse.time_slice(pulse.t0 + 150e-6, None)
+        
+        result = model.fit(fit_region.data, x=fit_region.time_values, fit_kws=fit_kws, params=params)
         fit = result.best_values
         err = model.nrmse(result)
         
-        self._fit_trace = Trace(result.eval(), time_values=pulse.time_values)
+        self.fit_trace = Trace(result.eval(), time_values=fit_region.time_values)
         
         ### fit again using shorter data
         ### this should help to avoid fitting against h-currents
@@ -158,22 +162,23 @@ class PatchClampTestPulse(PatchClampRecording):
             base_i = base_median
             
             input_step = fit['yoffset'] - base_i
-            access_step = fit['amp'] + input_step
             
+            peak_rgn = pulse.time_slice(pulse.t0, pulse.t0 + 1e-3)
             if pulse_amp >= 0:
                 input_step = max(1e-16, input_step)
+                access_step = peak_rgn.data.max() - base_i
                 access_step = max(1e-16, access_step)
             else:
                 input_step = min(-1e-16, input_step)
+                access_step = peak_rgn.data.min() - base_i
                 access_step = min(-1e-16, access_step)
             
             access_r = pulse_amp / access_step
             input_r = pulse_amp / input_step
-
-            # (under) estimate capacitance by measuring
-            # charge transfer
-            q = np.sum(pulse.data - base_i) * dt
-            cap = q / pulse_amp
+            
+            # Don't compute capacitance in VC mode; the methods
+            # we've tried don't work very well.
+            cap = None
         
         else:
             base_v = base_median
@@ -204,6 +209,7 @@ class PatchClampTestPulse(PatchClampRecording):
     def plot(self):
         self.analysis
         import pyqtgraph as pg
-        plt = pg.plot()
+        name, units = ('pipette potential', 'V') if self.clamp_mode == 'ic' else ('pipette current', 'A')
+        plt = pg.plot(labels={'left': (name, units), 'bottom': ('time', 's')})
         plt.plot(self['primary'].time_values, self['primary'].data)
-        plt.plot(self._fit_trace.time_values, self._fit_trace.data, pen='b')
+        plt.plot(self.fit_trace.time_values, self.fit_trace.data, pen='b')
