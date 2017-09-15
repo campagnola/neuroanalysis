@@ -42,6 +42,10 @@ class PatchClampTestPulse(PatchClampRecording):
         self._analysis = None
         
     @property
+    def indices(self):
+        return self._indices
+        
+    @property
     def access_resistance(self):
         """The access resistance measured from this test pulse.
         
@@ -59,6 +63,12 @@ class PatchClampTestPulse(PatchClampRecording):
     @property
     def capacitance(self):
         """The capacitance of the cell measured from this test pulse.
+        """
+        return self.analysis['capacitance']
+
+    @property
+    def time_constant(self):
+        """The membrane time constant measured from this test pulse.
         """
         return self.analysis['capacitance']
 
@@ -176,8 +186,9 @@ class PatchClampTestPulse(PatchClampRecording):
             access_r = pulse_amp / access_step
             input_r = pulse_amp / input_step
             
-            # Don't compute capacitance in VC mode; the methods
+            # No capacitance in VC mode yet; the methods
             # we've tried don't work very well.
+            tau = None
             cap = None
         
         else:
@@ -195,12 +206,14 @@ class PatchClampTestPulse(PatchClampRecording):
                 
             input_r = (v_step / pulse_amp)
             access_r = ((y0 - base_median) / pulse_amp) + bridge
-            cap = fit['tau'] / input_r
+            tau = fit['tau']
+            cap = tau / input_r
 
         self._analysis = {
             'input_resistance': input_r,
             'access_resistance': access_r,
             'capacitance': cap,
+            'time_constant': tau,
             'baseline_potential': base_v,
             'baseline_current': base_i,
         }
