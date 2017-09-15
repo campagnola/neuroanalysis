@@ -21,6 +21,7 @@ import numpy as np
 from . import util
 from collections import OrderedDict
 from .stats import ragged_mean
+from .baseline import float_mode
 
 
 class Container(object):
@@ -391,7 +392,8 @@ class PatchClampRecording(Recording):
     def __init__(self, *args, **kwds):
         meta = OrderedDict()
         extra_meta = ['cell_id', 'clamp_mode', 'patch_mode', 'holding_potential', 'holding_current',
-                      'bridge_balance', 'lpf_cutoff', 'pipette_offset']
+                      'bridge_balance', 'lpf_cutoff', 'pipette_offset', 'baseline_potential',
+                      'baseline_current', 'baseline_rms_noise', 'stim_name']
         for k in extra_meta:
             meta[k] = kwds.pop(k, None)
         Recording.__init__(self, *args, **kwds)
@@ -451,6 +453,46 @@ class PatchClampRecording(Recording):
     def nearest_test_pulse(self):
         """The test pulse that was acquired nearest to this recording.
         """
+
+    @property
+    def baseline_regions(self):
+        """A list of Traces that cover regions of the 'primary' channel where
+        the cell is expected to be in a steady state.
+        """
+        return []
+    
+    @property
+    def baseline_potential(self):
+        if self.meta['baseline_potential'] is None:
+            if self.clamp_mode == 'vc':
+                self.meta['baseline_potential'] = self.meta['holding_potential']
+            else:
+                rgns = self.baseline_regions
+                if len(rgns) == 0:
+                    return None
+                self.meta['baseline_potential'] = float_mode(rgns[0].data)
+        return self.meta['baseline_potential']
+
+    @property
+    def baseline_current(self):
+        if self.meta['baseline_current'] is None:
+            if self.clamp_mode == 'ic':
+                self.meta['baseline_current'] = self.meta['holding_current']
+            else:
+                rgns = self.baseline_regions
+                if len(rgns) == 0:
+                    return None
+                self.meta['baseline_current'] = float_mode(rgns[0].data)
+        return self.meta['baseline_current']
+
+    @property
+    def baseline_rms_noise(self):
+        if self.meta['baseline_rms_noise'] is None:
+            rgns = self.baseline_regions
+            if len(rgns) == 0:
+                    return None
+            self.meta['baseline_rms_noise'] = self.baseline_regions[0].data.std()
+        return self.meta['baseline_rms_noise']
 
     def __repr__(self):
         mode = self.clamp_mode
@@ -673,7 +715,10 @@ class Trace(Container):
     
     @property
     def duration(self):
-        return self.shape[0] * self.dt
+        if self.has_time_values:
+            return self.time_values[-1] - self.t0
+        else:
+            return self.shape[0] * self.dt
 
     @property
     def ndim(self):

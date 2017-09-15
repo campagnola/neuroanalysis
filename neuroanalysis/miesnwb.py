@@ -243,24 +243,34 @@ class MiesRecording(PatchClampRecording):
         self._hdf_group = self._nwb.hdf['acquisition/timeseries/data_%05d_AD%d' % self._trace_id]
         self._da_chan = None
         headstage_id = int(self._hdf_group['electrode_name'].value[0].split('_')[1])
-        start = self._hdf_group['starting_time'].value[0]
         
         PatchClampRecording.__init__(self, device_type='MultiClamp 700', device_id=headstage_id,
-                                     sync_recording=sweep, start_time=start)
+                                     sync_recording=sweep)
 
         # update metadata
         nb = self._nwb.notebook()[int(self._trace_id[0])][headstage_id]
         self._meta['stim_name'] = self._hdf_group['stimulus_description'].value[0]
-        self.meta['holding_potential'] = None if nb['V-Clamp Holding Level'] is None else nb['V-Clamp Holding Level'] * 1e-3
-        self.meta['holding_current'] = None if nb['I-Clamp Holding Level'] is None else nb['I-Clamp Holding Level'] * 1e-12
+        self.meta['holding_potential'] = (
+            None if nb['V-Clamp Holding Level'] is None
+            else nb['V-Clamp Holding Level'] * 1e-3
+        )
+        self.meta['holding_current'] = (
+            None if nb['I-Clamp Holding Level'] is None
+            else nb['I-Clamp Holding Level'] * 1e-12
+        )
         self._meta['notebook'] = nb
         if nb['Clamp Mode'] == 0:
             self._meta['clamp_mode'] = 'vc'
         else:
             self._meta['clamp_mode'] = 'ic'
-            self._meta['bridge_balance'] = 0 if nb['Bridge Bal Enable'] == 0.0 else nb['Bridge Bal Value'] * 1e6
+            self._meta['bridge_balance'] = (
+                0 if nb['Bridge Bal Enable'] == 0.0
+                else nb['Bridge Bal Value'] * 1e6
+            )
         self._meta['lpf_cutoff'] = nb['LPF Cutoff']
         self._meta['pipette_offset'] = nb['Pipette Offset'] * 1e-3
+        datetime = MiesNwb.igorpro_date(nb['TimeStamp'])
+        self.meta['start_time'] = datetime
 
         self._channels['primary'] = MiesTrace(self, 'primary')
         self._channels['command'] = MiesTrace(self, 'command')
@@ -287,6 +297,10 @@ class MiesRecording(PatchClampRecording):
         """
         # Maybe we could point to a nearby TP if there was none inserted?
         return self.inserted_test_pulse
+
+    @property
+    def has_inserted_test_pulse(self):
+        return self.meta['notebook']['TP Insert Checkbox'] == 1.0
     
     @property
     def inserted_test_pulse(self):
@@ -294,7 +308,7 @@ class MiesRecording(PatchClampRecording):
         or None if no pulse was inserted.
         """
         if self._inserted_test_pulse is None:
-            if self.meta['notebook']['TP Insert Checkbox'] != 1.0:
+            if not self.has_inserted_test_pulse:
                 return None
             
             # get start/stop indices of the test pulse region
@@ -316,6 +330,24 @@ class MiesRecording(PatchClampRecording):
             self._inserted_test_pulse = tp
         return self._inserted_test_pulse
 
+    @property
+    def baseline_regions(self):
+        """A list of Traces that cover regions of the 'primary' channel where
+        the cell is expected to be in a steady state.
+        """
+        pri = self['primary']
+        regions = []
+        start = self.meta['notebook']['Delay onset auto'] / 1000.  # duration of test pulse
+        dur = self.meta['notebook']['Delay onset user'] / 1000.  # duration of baseline
+        if dur > 0:
+            regions.append(pri.time_slice(start, start+dur))
+           
+        dur = self.meta['notebook']['Delay termination'] / 1000.
+        if dur > 0:
+            regions.append(pri.time_slice(pri.duration-dur, None))
+            
+        return regions
+    
     def _get_stim_data(self):
         scale = 1e-3 if self.clamp_mode == 'vc' else 1e-12
         return np.array(self.command_hdf) * scale
@@ -373,6 +405,10 @@ class MiesSyncRecording(SyncRecording):
 
     def create_recording(self, sweep_id, ch):
         return MiesRecording(self, sweep_id, ch)
+    
+    @property
+    def key(self):
+        return self._sweep_id
 
     def __repr__(self):
         return "<%s sweep=%d>" % (self.__class__.__name__, self._sweep_id)
