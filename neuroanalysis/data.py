@@ -18,6 +18,7 @@ analysis, and visualization.
 from __future__ import division
 
 import numpy as np
+import scipy.signal
 from . import util
 from collections import OrderedDict
 from .stats import ragged_mean
@@ -784,6 +785,9 @@ class Trace(Container):
         f : float
             (optional) desired target sample rate
         """
+        if not self.regularly_sampled:
+            raise TypeError("downsample requires regularly-sampled data.")
+        
         # choose downsampling factor
         if None not in (f, n):
             raise TypeError("Must specify either n or f (not both).")
@@ -791,6 +795,8 @@ class Trace(Container):
             if f is None:
                 raise TypeError("Must specify either n or f.")
             n = int(np.round(self.sample_rate / f))
+            if abs(n - (self.sample_rate / f)) > 1e-6:
+                raise ValueError("Cannot downsample to %gHz; the resulting downsample factor is not an integer (try Trace.resample instead)." % f)
         if n == 1:
             return self
         if n <= 0:
@@ -811,6 +817,26 @@ class Trace(Container):
             sr = float(sr) / n
         
         return self.copy(data=data, time_values=tvals, dt=dt, sample_rate=sr)
+
+    def resample(self, sample_rate):
+        """Return a resampled copy of this trace.
+        
+        Parameters
+        ----------
+        sample_rate : float
+            The new sample rate of the returned Trace
+        """
+        if not self.regularly_sampled:
+            raise TypeError("resample requires regularly-sampled data.")
+        
+        ns = int(np.round(len(self) * sample_rate / self.sample_rate))
+        data = scipy.signal.resample(self.data, ns)
+        
+        if self._meta['sample_rate'] is not None:
+            return self.copy(data=data, sample_rate=sample_rate)
+        elif self._meta['dt'] is not None:
+            dt = self.dt * self.sample_rate / sample_rate
+            return self.copy(data=data, dt=dt)
 
     def time_slice(self, start, stop):
         """Return a view of this trace with a specified start/stop time.
