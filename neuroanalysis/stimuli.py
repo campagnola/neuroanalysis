@@ -7,7 +7,7 @@ def square_pulses(trace, baseline=None):
     
     A pulse is defined as any contiguous region of the stimulus waveform
     that has a constant value other than the baseline. If no baseline is
-    specified, then it the first sample in the stimulus is used.
+    specified, then the first sample in the stimulus is used.
     
     Parameters
     ----------
