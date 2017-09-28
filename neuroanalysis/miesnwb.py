@@ -268,7 +268,8 @@ class MiesRecording(PatchClampRecording):
                 else nb['Bridge Bal Value'] * 1e6
             )
         self._meta['lpf_cutoff'] = nb['LPF Cutoff']
-        self._meta['pipette_offset'] = nb['Pipette Offset'] * 1e-3
+        offset = nb['Pipette Offset']  # sometimes the pipette offset recording can fail??
+        self._meta['pipette_offset'] = None if offset is None else offset * 1e-3
         datetime = MiesNwb.igorpro_date(nb['TimeStamp'])
         self.meta['start_time'] = datetime
 
