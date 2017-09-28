@@ -166,9 +166,14 @@ class PatchClampTestPulse(PatchClampRecording):
                 #args=(tVals2, shortPulse['primary'].view(np.ndarray) - baseMean),
                 #maxfev=200, full_output=1)
 
-        ## Handle analysis differently depenting on clamp mode
+        ## Handle analysis differently depending on clamp mode
         if clamp_mode == 'vc':
-            base_v = self['command'].data[0] + self.meta['holding_potential']
+            hp = self.meta['holding_potential']
+            if hp is not None:
+                # we can only report base voltage if metadata includes holding potential
+                base_v = self['command'].data[0] + hp
+            else:
+                base_v = None
             base_i = base_median
             
             input_step = fit['yoffset'] - base_i
@@ -193,7 +198,12 @@ class PatchClampTestPulse(PatchClampRecording):
         
         else:
             base_v = base_median
-            base_i = self['command'].data[0] + self.meta['holding_current']
+            hc = self.meta['holding_current']
+            if hc is not None:
+                # we can only report base current if metadata includes holding current
+                base_i = self['command'].data[0] + hc
+            else:
+                base_i = None
             y0 = result.eval(x=pulse.t0)
             
             if pulse_amp >= 0:
