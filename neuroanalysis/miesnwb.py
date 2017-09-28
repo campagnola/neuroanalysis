@@ -366,14 +366,8 @@ class MiesRecording(PatchClampRecording):
                 raise Exception("Cannot find DA channel for headstage %d" % self.device_id)
         return self._da_chan
 
-    def __repr__(self):
-        mode = self.clamp_mode
-        if mode == 'vc':
-            extra = "mode=VC holding=%d" % int(np.round(self.holding_potential))
-        elif mode == 'ic':
-            extra = "mode=IC holding=%d" % int(np.round(self.holding_current))
-
-        return "<%s %d.%d  stim=%s %s>" % (self.__class__.__name__, self._trace_id[0], self.device_id, self._meta['stim_name'], extra)
+    def _descr(self):
+        return "%s %s.%s stim=%s" % (PatchClampRecording._descr(self), self._trace_id[0], self.device_id, self._meta['stim_name'])
 
 
 class MiesSyncRecording(SyncRecording):

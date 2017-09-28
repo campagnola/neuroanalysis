@@ -495,14 +495,21 @@ class PatchClampRecording(Recording):
             self.meta['baseline_rms_noise'] = self.baseline_regions[0].data.std()
         return self.meta['baseline_rms_noise']
 
-    def __repr__(self):
+    def _descr(self):
         mode = self.clamp_mode
         if mode == 'vc':
-            extra = "mode=VC holding=%d" % int(np.round(self.holding_potential))
+            hp = self.holding_potential
+            if hp is not None:
+                hp = int(np.round(hp*1e3))
+            extra = "mode=VC holding=%s" % hp
         elif mode == 'ic':
-            extra = "mode=IC holding=%d" % int(np.round(self.holding_current))
+            hc = self.holding_current
+            if hc is not None:
+                hc = int(np.round(hc*1e12))
+            extra = "mode=IC holding=%s" % hc
 
-        return "<%s %s>" % (self.__class__.__name__, extra)
+    def __repr__(self):
+        return "<%s %s>" % (self.__class__.__name__, self._descr())
 
 
 class Trace(Container):
