@@ -852,8 +852,8 @@ class Trace(Container):
         beginning or end of the trace.
         """
         if self.regularly_sampled:
-            i1 = int((start - self.t0) / self.dt) if start is not None else None
-            i2 = int((stop - self.t0) / self.dt) if stop is not None else None
+            i1 = int(np.round((start - self.t0) / self.dt)) if start is not None else None
+            i2 = i1 + int(np.round((stop - start) / self.dt)) if stop is not None else None
         else:
             i1 = np.argwhere(self.time_values >= start)[0,0] if start is not None else None
             i2 = np.argwhere(self.time_values >= stop)[0,0] if stop is not None else None
@@ -919,7 +919,17 @@ class TraceList(object):
         """
         max_dt = max([trace.dt for trace in self.traces])
         downsampled = [trace.downsample(n=int(np.round(max_dt/trace.dt))) for trace in self.traces]
-        avg = ragged_mean([d.data for d in downsampled], method='clip')
+        max_t0 = max([trace.t0 for trace in downsampled])
+        #min_len = min([trace.time_values[-1] for trace in downsampled])
+        min_len=[]
+        for trace in downsampled:
+            min_len.append(trace.time_values[-1])
+        array = []
+        for trace in downsampled:
+            clip_trace = trace.time_slice(max_t0, min(min_len))
+            array.append(clip_trace.data)
+        avg = np.nanmean(np.vstack(array), axis=0)
+        # avg = ragged_mean([d.data for d in downsampled], method='clip')
         
         ds0 = downsampled[0]
         if ds0.has_time_values:
