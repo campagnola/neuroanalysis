@@ -26,10 +26,10 @@ class MiesNwbExplorer(QtGui.QSplitter):
         self._sel_box_layout.setContentsMargins(0, 0, 0, 0)
         self._sel_box.setLayout(self._sel_box_layout)
         self.addWidget(self._sel_box)
-        
         self.sweep_tree = QtGui.QTreeWidget()
-        self.sweep_tree.setColumnCount(4)
-        self.sweep_tree.setHeaderLabels(['ID', 'Stim Name', 'Clamp Mode', 'Holding'])
+        columns = ['ID', 'Stim Name', 'Clamp Mode', 'Holding V', 'Holding I']
+        self.sweep_tree.setColumnCount(len(columns))
+        self.sweep_tree.setHeaderLabels(columns)
         self.sweep_tree.setSelectionMode(QtGui.QAbstractItemView.ExtendedSelection)
         self._sel_box_layout.addWidget(self.sweep_tree)
         
@@ -61,20 +61,16 @@ class MiesNwbExplorer(QtGui.QSplitter):
             recs = sweep.recordings
             stim_name = recs[0].meta['stim_name']
             modes = ''
-            holdings = ''
+            V_holdings = ''
+            I_holdings = ''
             for rec in sweep.recordings:
                 if rec.clamp_mode == 'vc':
                     modes += 'V'
-                    holding = rec.holding_potential
                 else:
                     modes += 'I'
-                    holding = rec.holding_current
-                    
-                if holding is None:
-                    holdings += '? '
-                else:
-                    holdings += '%0.1f '% (holding*1000)
-            item = QtGui.QTreeWidgetItem([str(i), stim_name, modes, holdings])
+                V_holdings += '%d '% (int(rec.rounded_holding_potential*1000))
+                I_holdings += '%d '% (int(rec.holding_current*1e12))
+            item = QtGui.QTreeWidgetItem([str(i), stim_name, modes, V_holdings, I_holdings])
             item.setCheckState(0, QtCore.Qt.Unchecked)
             item.data = sweep
             self.sweep_tree.addTopLevelItem(item)

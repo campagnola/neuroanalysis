@@ -427,7 +427,8 @@ class PatchClampRecording(Recording):
             return self._meta['holding_potential']
         else:
             return self._baseline_value()
-
+            
+    @property        
     def rounded_holding_potential(self, increment=5e-3):
         """Return the holding potential rounded to the nearest increment.
         
