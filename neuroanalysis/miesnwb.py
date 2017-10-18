@@ -14,12 +14,18 @@ class MiesNwb(Experiment):
     def __init__(self, filename):
         Experiment.__init__(self)
         self.filename = filename
-        self.hdf = None
+        self._hdf = None
         self._sweeps = None
         self._groups = None
         self._notebook = None
         self.open()
         
+    @property
+    def hdf(self):
+        if self._hdf is None:
+            self.open()
+        return self._hdf
+
     def notebook(self):
         """Return compiled data from the lab notebook.
 
@@ -116,13 +122,13 @@ class MiesNwb(Experiment):
 
     def close(self):
         self.hdf.close()
-        self.hdf = None
+        self._hdf = None
 
     def open(self):
-        if self.hdf is not None:
+        if self._hdf is not None:
             return
         try:
-            self.hdf = h5py.File(self.filename, 'r')
+            self._hdf = h5py.File(self.filename, 'r')
         except Exception:
             print("Error opening: %s" % self.filename)
             raise
@@ -208,6 +214,12 @@ class MiesNwb(Experiment):
     def __repr__(self):
         return "<MiesNwb %s>" % self.filename
 
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        # don't try to pickle hdf objects
+        state['_hdf'] = None
+        return state
+
 
 class MiesTrace(Trace):
     def __init__(self, recording, chan):
@@ -240,16 +252,16 @@ class MiesRecording(PatchClampRecording):
         self._nwb = sweep._nwb
         self._trace_id = (sweep_id, ad_chan)
         self._inserted_test_pulse = None
-        self._hdf_group = self._nwb.hdf['acquisition/timeseries/data_%05d_AD%d' % self._trace_id]
+        self._hdf_group = None
         self._da_chan = None
-        headstage_id = int(self._hdf_group['electrode_name'].value[0].split('_')[1])
+        headstage_id = int(self.hdf_group['electrode_name'].value[0].split('_')[1])
         
         PatchClampRecording.__init__(self, device_type='MultiClamp 700', device_id=headstage_id,
                                      sync_recording=sweep)
 
         # update metadata
         nb = self._nwb.notebook()[int(self._trace_id[0])][headstage_id]
-        self._meta['stim_name'] = self._hdf_group['stimulus_description'].value[0]
+        self._meta['stim_name'] = self.hdf_group['stimulus_description'].value[0]
         self.meta['holding_potential'] = (
             None if nb['V-Clamp Holding Level'] is None
             else nb['V-Clamp Holding Level'] * 1e-3
@@ -277,6 +289,12 @@ class MiesRecording(PatchClampRecording):
         self._channels['command'] = MiesTrace(self, 'command')
     
     @property
+    def hdf_group(self):
+        if self._hdf_group is None:
+            self._hdf_group = self._nwb.hdf['acquisition/timeseries/data_%05d_AD%d' % self._trace_id]
+        return self._hdf_group
+
+    @property
     def clamp_mode(self):
         return 'vc' if self.meta['notebook']['Clamp Mode'] == 0 else 'ic'
 
@@ -284,7 +302,7 @@ class MiesRecording(PatchClampRecording):
     def primary_hdf(self):
         """The raw HDF5 data containing the primary channel recording
         """
-        return self._hdf_group['data']        
+        return self.hdf_group['data']        
 
     @property
     def command_hdf(self):
@@ -348,10 +366,6 @@ class MiesRecording(PatchClampRecording):
             regions.append(pri.time_slice(pri.duration-dur, None))
             
         return regions
-    
-    def _get_stim_data(self):
-        scale = 1e-3 if self.clamp_mode == 'vc' else 1e-12
-        return np.array(self.command_hdf) * scale
 
     def da_chan(self):
         """Return the DA channel ID for this recording.
@@ -369,6 +383,11 @@ class MiesRecording(PatchClampRecording):
 
     def _descr(self):
         return "%s %s.%s stim=%s" % (PatchClampRecording._descr(self), self._trace_id[0], self.device_id, self._meta['stim_name'])
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state['_hdf_group'] = None
+        return state
 
 
 class MiesSyncRecording(SyncRecording):
