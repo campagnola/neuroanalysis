@@ -1,30 +1,26 @@
-Just a Module
+Neuroanalysis
 =============
 
-Interactive, modular tools for analysis of neurophysiology data.
+Modular and interactive tools for analysis of neurophysiology data, with emphasis on 
+patch-clamp electrophysiology.
 
 * Functions for running common analysis algorithms
-* Data abstraction layer to allow adapting new data formats
+    * Synaptic/calcium event detection and characterization
+    * Synaptic release modeling
+    * VC and CC spike detection and characterization
+    * VC and CC test pulse analysis
+    * Basic signal processing (filtering, baseline removal, etc.)
+* Data abstraction layer to allow adapting new data formats (see neuroanalysis/data.py)
 * Re-usable user interface elements for implementing common analysis tasks
 
 
-What makes a reusable analysis module?
+Status
+------
 
-- well-defined data input, result output
-- functions or static methods for performing analysis
-    - standard options for requesting more comprehansive output / intermediate values
-        Module.process(return=['event_arrays', 'fit_errors'])
-- optional user interface
-    - control widgets
-        -> based on parametertree
-    - plot / graphicsview adapters
-        -> easy disconnect / reconnect from plots
-    - save/restore state
-    - display previously-generated results (to avoid recomputation)
-    - display results read-only
-    - create flowchart node
-    - how to provide multiple visual outputs with a single control input?
-        -> create UI with shared parameters.
+This project is early in development and does not yet have a stable API.
+Issues and pull requests are accepted (see CONTRIBUTING.md), but may not be 
+reviewed or accepted on any fixed schedule.
+
 
 
 
