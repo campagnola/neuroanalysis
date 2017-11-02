@@ -276,7 +276,7 @@ class MiesRecording(PatchClampRecording):
         else:
             self._meta['clamp_mode'] = 'ic'
             self._meta['bridge_balance'] = (
-                0 if nb['Bridge Bal Enable'] == 0.0
+                0.0 if nb['Bridge Bal Enable'] == 0.0 or nb['Bridge Bal Value'] is None
                 else nb['Bridge Bal Value'] * 1e6
             )
         self._meta['lpf_cutoff'] = nb['LPF Cutoff']
