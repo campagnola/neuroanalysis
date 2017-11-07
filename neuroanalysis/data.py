@@ -891,6 +891,19 @@ class TraceView(Trace):
     def parent(self):
         return self._parent_trace
 
+    @property
+    def source_indices(self):
+        """Return the indices of this view on the original Trace.
+        """
+        v = self
+        start = 0
+        while True:
+            start += self._view_slice.start
+            v = v.parent
+            if not isinstance(v, TraceView):
+                break
+        return start, start + len(self)
+
 
 class TraceList(object):
     def __init__(self, traces=None):
