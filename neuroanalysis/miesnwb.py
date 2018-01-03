@@ -35,7 +35,10 @@ class MiesNwb(Experiment):
             device = self.hdf['general/devices'].keys()[0].split('_',1)[-1]
             nb_keys = self.hdf['general']['labnotebook'][device]['numericalKeys'][0]
             nb_fields = OrderedDict([(k, i) for i,k in enumerate(nb_keys)])
-            nb = self.hdf['general']['labnotebook'][device]['numericalValues']
+
+            # convert notebook to array here, otherwise we incur the decompression cost for the entire
+            # dataset every time we try to access part of it. 
+            nb = np.array(self.hdf['general']['labnotebook'][device]['numericalValues'])
 
             # EntrySourceType field is needed to distinguish between records created by TP vs sweep
             entry_source_type_index = nb_fields.get('EntrySourceType', None)
