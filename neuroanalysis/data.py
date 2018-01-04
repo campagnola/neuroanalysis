@@ -289,12 +289,6 @@ class SyncRecording(Container):
         return self.recordings
 
 
-class MultipatchProbe(SyncRecording):
-    """A synchronous recording between multiple patch electrodes in which spiking (and possibly
-    synaptic events) are evoked in one or more cells.
-    """
-
-
 device_tree = {
     'patch clamp amplifier': {
         'MultiClamp 700': [
