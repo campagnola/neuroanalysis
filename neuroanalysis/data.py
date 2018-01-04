@@ -250,7 +250,7 @@ class SyncRecording(Container):
     (for example, two patch-clamp amplifiers and a camera).
     """
     def __init__(self, recordings=None, parent=None):
-        self._parent = util.WeakRef(parent)
+        self._parent = parent
         self._recordings = recordings if recordings is not None else OrderedDict()
         Container.__init__(self)
 
@@ -282,7 +282,7 @@ class SyncRecording(Container):
 
     @property
     def parent(self):
-        return self._parent()
+        return self._parent
 
     @property
     def children(self):
@@ -323,7 +323,7 @@ class Recording(Container):
                 assert isinstance(v, Trace)
         self._channels = channels
 
-        self._sync_recording = util.WeakRef(sync_recording)
+        self._sync_recording = sync_recording
         
     @property
     def device_type(self):
@@ -351,7 +351,7 @@ class Recording(Container):
     
     @property
     def sync_recording(self):
-        return self._sync_recording()
+        return self._sync_recording
 
     def __getitem__(self, chan):
         return self._channels[chan]
@@ -554,7 +554,7 @@ class Trace(Container):
         self._meta.update(meta)
         self._time_values = time_values
         self._generated_time_values = None
-        self._recording = util.WeakRef(recording)
+        self._recording = recording
         
     @property
     def data(self):
@@ -733,7 +733,7 @@ class Trace(Container):
     
     @property
     def recording(self):
-        return self._recording()
+        return self._recording
 
     def copy(self, data=None, time_values=None, **kwds):
         """Return a copy of this Trace.
