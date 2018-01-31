@@ -15,7 +15,7 @@ def bessel_filter(trace, cutoff, order=1, btype='low', bidir=True):
 def butterworth_filter(trace, w_pass, w_stop=None, g_pass=2.0, g_stop=20.0, order=1, btype='low', bidir=True):
     """Return a Butterworth-filtered copy of a Trace.
     """
-    filtered = besselFilter(trace.data, dt=trace.dt, wStop=w_stop, wPass=w_pass, gPass=g_pass, gStop=g_stop, order=order, btype=btype, bidir=bidir)
+    filtered = butterworthFilter(trace.data, dt=trace.dt, wStop=w_stop, wPass=w_pass, gPass=g_pass, gStop=g_stop, order=order, btype=btype, bidir=bidir)
     return trace.copy(data=filtered)
 
 

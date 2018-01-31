@@ -428,7 +428,10 @@ class PatchClampRecording(Recording):
         
         The default increment rounds to the nearest 5 mV.
         """
-        return increment * np.round(self.holding_potential / increment)
+        hp = self.holding_potential
+        if hp is None:
+            return None
+        return increment * np.round(hp / increment)
 
     @property
     def holding_current(self):
@@ -638,7 +641,7 @@ class Trace(Container):
         else:
             self._meta['t0'] = t0
             self._generated_time_values = None
-    
+
     @property
     def time_values(self):
         """An array of sample time values.
@@ -827,12 +830,33 @@ class Trace(Container):
         ----------
         sample_rate : float
             The new sample rate of the returned Trace
+
+        Notes
+        -----
+        Lowpass filter followed by linear interpolation to extract new samples.
+
+        Uses a bessel filter to avoid ringing artifacts, with cutoff=sample_rate
+        and order=2 chosen to yield decent antialiasing and minimal blurring.
+
+        scipy.resample was avoided due to ringing and edge artifacts.
         """
         if not self.regularly_sampled:
             raise TypeError("resample requires regularly-sampled data.")
         
         ns = int(np.round(len(self) * sample_rate / self.sample_rate))
-        data = scipy.signal.resample(self.data, ns)
+
+        # scipy.resample causes ringing and edge artifacts (freq-domain windowing
+        # did not seem to help)
+        # data = scipy.signal.resample(self.data, ns)
+
+        # bessel filter gives reasonably good antialiasing with no ringing or edge
+        # artifacts
+        from .filter import bessel_filter
+        filt = bessel_filter(self, cutoff=sample_rate, order=2)
+        t1 = self.time_values
+        t2 = np.arange(t1[0], t1[-1], 1.0/sample_rate)
+
+        data = np.interp(t2, t1, filt.data)
         
         if self._meta['sample_rate'] is not None:
             return self.copy(data=data, sample_rate=sample_rate)

@@ -68,7 +68,11 @@ class MiesNwbExplorer(QtGui.QSplitter):
                     modes += 'V'
                 else:
                     modes += 'I'
-                V_holdings += '%d '% (int(rec.rounded_holding_potential*1000))
+                hp = rec.rounded_holding_potential
+                if hp is not None:
+                    V_holdings += '%d '% (int(hp*1000))
+                else:
+                    V_holdings += '?? '
                 I_holdings += '%d '% (int(rec.holding_current*1e12))
             item = QtGui.QTreeWidgetItem([str(i), stim_name, modes, V_holdings, I_holdings])
             item.setCheckState(0, QtCore.Qt.Unchecked)
