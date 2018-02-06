@@ -30,6 +30,32 @@ def savgol_filter(trace, window_duration, **kwds):
 
 def remove_artifacts(trace, edges, window):
     """Remove selected regions from a trace and fill with a flat line.
+
+    Parameters
+    ----------
+    trace : Trace instance
+        Data to be filtered.
+    edges : list of (start, stop) tuples
+        Specifies the indices of regions in the trace to remove.
+    window : float
+        Window duration (in seconds) on either side of each removed
+        chunk that will be used to determine the values used to fill
+        the chunk.
+
+    Returns
+    -------
+    A copy of *trace* with artifacts removed.
+
+    Notes
+    -----
+    For each (start, stop) pair in *edges*, three windows are used:
+
+    1. The window in [start:stop] that will have its values replaced
+    2. The window immediately before (1), of width determined by the *window* argument
+    3. The window immediately after (1), of width determined by the *window* argument
+
+    The values in (1) are replaced by performing a linear regression on the data in
+    (2) and (3), then filling (1) with the resulting extrapolated line.
     """
     data = trace.data.copy()
     t = trace.time_values
@@ -57,5 +83,6 @@ def remove_artifacts(trace, edges, window):
         chunky = chunky[mask]
         slope, intercept = scipy.stats.linregress(chunkx, chunky)[:2]
         data[on:off] = slope * t[on:off] + intercept
+    
     return trace.copy(data=data)
         
