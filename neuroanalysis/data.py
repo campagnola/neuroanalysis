@@ -878,6 +878,11 @@ class Trace(Container):
             i2 = np.argwhere(self.time_values >= stop)[0,0] if stop is not None else None
         return self[i1:i2]
 
+    def value_at(self, t, interp='linear'):
+        """Return the value of this trace at specific timepoints.
+        """
+        return np.interp(t, self.time_values, self.data)
+
     def __mul__(self, x):
         return self.copy(data=self.data * x)
 
