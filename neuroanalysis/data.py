@@ -840,6 +840,8 @@ class Trace(Container):
 
         scipy.resample was avoided due to ringing and edge artifacts.
         """
+        if self.sample_rate == sample_rate:
+            return self
         if not self.regularly_sampled:
             raise TypeError("resample requires regularly-sampled data.")
         
@@ -954,27 +956,17 @@ class TraceList(object):
 
         Downsamples to the minimum rate and clips ragged edges.
         """
-        max_dt = max([trace.dt for trace in self.traces])
-        downsampled = [trace.downsample(n=int(np.round(max_dt/trace.dt))) for trace in self.traces]
-        max_t0 = max([trace.t0 for trace in downsampled])
-        #min_len = min([trace.time_values[-1] for trace in downsampled])
-        min_len=[]
-        for trace in downsampled:
-            min_len.append(trace.time_values[-1])
+        min_sr = min([trace.sample_rate for trace in self.traces])
+        downsampled = [trace.resample(min_sr) for trace in self.traces]
+        start_t = max([trace.t0 for trace in downsampled])
+        stop_t = min([trace.time_values[-1] for trace in downsampled])
         array = []
         for trace in downsampled:
-            clip_trace = trace.time_slice(max_t0, min(min_len))
+            clip_trace = trace.time_slice(start_t, stop_t)
             array.append(clip_trace.data)
         avg = np.nanmean(np.vstack(array), axis=0)
-        # avg = ragged_mean([d.data for d in downsampled], method='clip')
         
-        ds0 = downsampled[0]
-        if ds0.has_time_values:
-            tvals = ds0.time_values[:len(avg)]
-        else:
-            tvals = None
-        
-        return ds0.copy(data=avg, time_values=tvals)
+        return downsampled[0].copy(data=avg, t0=start_t, sample_rate=min_sr, dt=None)
 
 
 class DAQRecording(Recording):
