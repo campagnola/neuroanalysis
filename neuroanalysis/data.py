@@ -354,7 +354,10 @@ class Recording(Container):
         return self._sync_recording
 
     def __getitem__(self, chan):
-        return self._channels[chan]
+        if isinstance(chan, slice):
+            return RecordingView(self, chan)
+        else:
+            return self._channels[chan]
 
     def data(self):
         return np.concatenate([self[ch].data[:,None] for ch in self.channels], axis=1)
@@ -365,7 +368,42 @@ class Recording(Container):
     
     @property
     def children(self):
-        return list(self._channels.values())
+        return [self[k] for k in self.channels]
+
+
+class RecordingView(Recording):
+    """A time-slice of a multi channel recording
+    """
+    def __init__(self, rec, sl):
+        self._parent_rec = rec
+        self._view_slice = sl
+        chans = OrderedDict([(k, rec[k]) for k in rec.channels])
+        Recording.__init__(self, 
+            channels=chans, start_time=rec.start_time, device_type=rec.device_type,
+            device_id=rec.device_id, sync_recording=rec.sync_recording)
+
+    def __getattr__(self, attr):
+        return getattr(self._parent_rec, attr)
+
+    def __getitem__(self, item):
+        return self._parent_rec[item][self._view_slice]
+
+    @property
+    def parent(self):
+        return self._parent_rec
+
+    @property
+    def source_indices(self):
+        """Return the indices of this view on the original Recording.
+        """
+        v = self
+        start = 0
+        while True:
+            start += self._view_slice.start
+            v = v.parent
+            if not isinstance(v, RecordingView):
+                break
+        return start, start + len(self)
 
 
 class PatchClampRecording(Recording):
@@ -391,6 +429,7 @@ class PatchClampRecording(Recording):
                       'baseline_current', 'baseline_rms_noise', 'stim_name']
         for k in extra_meta:
             meta[k] = kwds.pop(k, None)
+        self._baseline_data = None
         Recording.__init__(self, *args, **kwds)
         self._meta.update(meta)
         
@@ -414,13 +453,13 @@ class PatchClampRecording(Recording):
 
     @property
     def holding_potential(self):
-        """The holding potential if the recording is voltage-clamp, or the
+        """The command holding potential if the recording is voltage-clamp, or the
         resting membrane potential if the recording is current-clamp.
         """
         if self.clamp_mode == 'vc':
             return self._meta['holding_potential']
         else:
-            return self._baseline_value()
+            return self.baseline_potential
             
     @property        
     def rounded_holding_potential(self, increment=5e-3):
@@ -440,13 +479,7 @@ class PatchClampRecording(Recording):
         if self.clamp_mode == 'ic':
             return self._meta['holding_current']
         else:
-            return self._baseline_value()
-
-    def _baseline_value(self):
-        """Return median value of first 10 ms from primary channel data.
-        """
-        t = self['primary']
-        return np.median(t.data[:int(10e-3/t.dt)])
+            return self.baseline_current
 
     @property
     def nearest_test_pulse(self):
@@ -455,42 +488,65 @@ class PatchClampRecording(Recording):
 
     @property
     def baseline_regions(self):
-        """A list of Traces that cover regions of the 'primary' channel where
+        """A list of (start,stop) index pairs that cover regions of the recording
         the cell is expected to be in a steady state.
         """
         return []
-    
+
+    @property
+    def baseline_data(self):
+        """All items in baseline_regions concatentated into a single trace.
+        """
+        if self._baseline_data is None:
+            data = [self['primary'].data[start:stop] for start,stop in self.baseline_regions]
+            if len(data) == 0:
+                data = np.empty(0, dtype=self['primary'].data.dtype)
+            else:
+                data = np.concatenate(data)
+            self._baseline_data = Trace(data, sample_rate=self['primary'].sample_rate, recording=self)
+        return self._baseline_data
+
     @property
     def baseline_potential(self):
+        """The mode potential value from all quiescent regions in the recording.
+
+        See float_mode()
+        """
         if self.meta['baseline_potential'] is None:
             if self.clamp_mode == 'vc':
                 self.meta['baseline_potential'] = self.meta['holding_potential']
             else:
-                rgns = self.baseline_regions
-                if len(rgns) == 0:
+                data = self.baseline_data.data
+                if len(data) == 0:
                     return None
-                self.meta['baseline_potential'] = float_mode(rgns[0].data)
+                self.meta['baseline_potential'] = float_mode(data)
         return self.meta['baseline_potential']
 
     @property
     def baseline_current(self):
+        """The mode current value from all quiescent regions in the recording.
+
+        See float_mode()
+        """
         if self.meta['baseline_current'] is None:
             if self.clamp_mode == 'ic':
                 self.meta['baseline_current'] = self.meta['holding_current']
             else:
-                rgns = self.baseline_regions
-                if len(rgns) == 0:
+                data = self.baseline_data.data
+                if len(data) == 0:
                     return None
-                self.meta['baseline_current'] = float_mode(rgns[0].data)
+                self.meta['baseline_current'] = float_mode(data)
         return self.meta['baseline_current']
 
     @property
     def baseline_rms_noise(self):
+        """The standard deviation of all data from quiescent regions in the recording.
+        """
         if self.meta['baseline_rms_noise'] is None:
-            rgns = self.baseline_regions
-            if len(rgns) == 0:
-                    return None
-            self.meta['baseline_rms_noise'] = self.baseline_regions[0].data.std()
+            data = self.baseline_data.data
+            if len(data) == 0:
+                return None
+            self.meta['baseline_rms_noise'] = data.std()
         return self.meta['baseline_rms_noise']
 
     def _descr(self):
@@ -896,6 +952,27 @@ class Trace(Container):
 
     def __sub__(self, x):
         return self.copy(data=self.data - x)
+
+    def mean(self):
+        """Mean value of the data in this Trace.
+
+        Equivalent to self.data.mean()
+        """
+        return self.data.mean()
+
+    def std(self):
+        """Standard deviation of the data in this Trace.
+
+        Equivalent to self.data.std()
+        """
+        return self.data.mean()
+
+    def median(self):
+        """Median value of the data in this Trace.
+
+        Equivalent to np.median(self.data)
+        """
+        return np.median(self.data)
 
 
 class TraceView(Trace):
