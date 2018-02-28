@@ -67,7 +67,7 @@ class ModelCell(object):
         
         # Add in a little electrical recording noise        
         if self.recording_noise:
-            enoise = self._rec_noise_sigma[mode]
+            enoise = self.rec_noise_sigma[mode]
             pip = pip + np.random.normal(size=len(pip), scale=enoise)
         
         recording = Trace(pip, time_values=t)

@@ -24,8 +24,8 @@ def square_pulses(trace, baseline=None):
     changes = np.argwhere(sdiff != 0)[:, 0] + 1
     pulses = []
     for i, start in enumerate(changes):
-        amp = trace[start]
-        if amp != baseline:
+        amp = trace[start] - baseline
+        if amp != 0:
             stop = changes[i+1] if (i+1 < len(changes)) else len(trace)
             pulses.append((start, stop, amp))
     return pulses

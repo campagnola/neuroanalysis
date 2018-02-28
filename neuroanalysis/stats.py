@@ -1,5 +1,6 @@
 import numpy as np
 import scipy.optimize
+import scipy.stats
 
 
 def binomial_ci(p, n, alpha=0.05 ):
@@ -20,6 +21,8 @@ def binomial_ci(p, n, alpha=0.05 ):
     
     Credit: http://stackoverflow.com/questions/13059011/is-there-any-python-function-library-for-calculate-binomial-confidence-intervals
     """
+    if p == n:
+        return (np.nan, np.nan)
     upper_fn = lambda c: scipy.stats.binom.cdf(p, n, c) - alpha
     lower_fn = lambda c: scipy.stats.binom.cdf(p, n, c) - (1.0 - alpha)
     return scipy.optimize.bisect(lower_fn, 0, 1), scipy.optimize.bisect(upper_fn, 0, 1)
