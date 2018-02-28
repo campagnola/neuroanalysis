@@ -410,8 +410,8 @@ class PatchClampRecording(Recording):
     """Recording from a patch-clamp amplifier.
 
     * Current- or voltage-clamp mode
-    * Minimum one recorded channel, possibly more
-    * May include stimulus waveform
+    * Minimum one recorded channel ('primary'), possibly more
+    * Includes stimulus waveform ('command')
     * Metadata about amplifier state:
         * clamp_mode ('ic' 'i0', or 'vc')
         * holding potential (vc only)
@@ -421,6 +421,8 @@ class PatchClampRecording(Recording):
         * pipette_offset
     
     Should have at least 'primary' and 'command' channels.
+
+    Note: command channel values should _include_ holding potential/current!
     """
     def __init__(self, *args, **kwds):
         meta = OrderedDict()

@@ -229,7 +229,10 @@ class MiesTrace(Trace):
                 self._data = np.array(rec.primary_hdf) * scale
             elif chan == 'command':
                 scale = 1e-3 if rec.clamp_mode == 'vc' else 1e-12
-                self._data = np.array(rec.command_hdf) * scale
+                # command values are stored _without_ holding, so we add
+                # that back in here.
+                offset = rec.holding_potential if rec.clamp_mode == 'vc' else rec.holding_current
+                self._data = (np.array(rec.command_hdf) * scale) + offset
         return self._data
     
     
@@ -512,90 +515,3 @@ class MiesSyncRecording(SyncRecording):
     @property
     def parent(self):
         return self._nwb
-
-    #def channel_meta(self, all_chans=False):
-        #"""Return a dict containing the metadata key/value pairs that are shared
-        #across all traces in this sweep.
-
-        #If *all_chans* is True, then instead return a list of values for each meta key.
-        #"""
-        #if all_chans:
-            #m = OrderedDict()
-            #for dev in self.devices:
-                #rec = self[dev]
-                #for k,v in rec.meta().items():
-                    #if k not in m:
-                        #m[k] = []
-                    #m[k].append(v)
-            #return m
-
-        #else:
-            #if self._chan_meta is None:
-                #traces = [self.traces()[chan] for chan in self.channels()]
-                #m = traces[0].meta().copy()
-                #for tr in traces[1:]:
-                    #trm = tr.meta()
-                    #rem = []
-                    #for k in m:
-                        #if k not in trm or trm[k] != m[k]:
-                            #rem.append(k)
-                #for k in rem:
-                    #m.pop(k)
-
-                #self._chan_meta = m
-            #return self._chan_meta
-        
-    #def data(self):
-        #"""Return a single array containing recorded data and stimuli from all channels recorded
-        #during this sweep.
-        
-        #The array shape is (channels, samples, 2).
-        #"""
-        #traces = self.traces()
-        #chan_data = [traces[ch].data() for ch in sorted(list(traces))]
-        #arr = np.empty((len(chan_data),) + chan_data[0].shape, chan_data[0].dtype)
-        #for i,data in enumerate(chan_data):
-            #arr[i] = data
-        #return arr
-
-    #def shape(self):
-        #return (len(self.channels()), len(self.traces().values()[0]))
-
-    #def describe(self):
-        #"""Return a string description of this sweep.
-        #"""
-        #return "\n".join(map(repr, self.traces().values()))
-
-    #def start_time(self):
-        #return MiesNwb.igorpro_date(self.meta()['TimeStamp'])
-
-
-#class SweepGroup(object):
-    #"""Represents a collection of Sweeps that were acquired contiguously and
-    #all share the same stimulus parameters.
-    #"""
-    #def __init__(self, nwb, sweeps):
-        #self._nwb = nwb
-        #self.sweeps = sweeps
-        
-    #def meta(self):
-        #"""Return metadata from the first sweep in this group.
-        #"""
-        #return self.sweeps[0].meta()
-        
-    #def data(self):
-        #"""Return a single array containing all data from all sweeps in this
-        #group.
-        
-        #The array shape is (sweeps, channels, samples, 2).
-        #"""
-        #return self._nwb.pack_sweep_data(self.sweeps)
-
-    #def describe(self):
-        #"""Return a string description of this group (taken from the first sweep).
-        #"""
-        #return self.sweeps[0].describe()
-
-    #def __repr__(self):
-        #ids = self.sweeps[0].sweep_id, self.sweeps[-1].sweep_id
-        #return "<SweepGroup %d-%d>" % ids
