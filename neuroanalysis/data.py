@@ -967,7 +967,7 @@ class Trace(Container):
 
         Equivalent to self.data.std()
         """
-        return self.data.mean()
+        return self.data.std()
 
     def median(self):
         """Median value of the data in this Trace.
