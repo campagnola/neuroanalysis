@@ -187,7 +187,7 @@ class MiesNwb(Experiment):
         return self.contents
     
     def __repr__(self):
-        return "<MiesNwb %s>" % self.filename
+        return "<%s %s>" % (self.__class__.__name__, self.filename)
 
     def __getstate__(self):
         state = self.__dict__.copy()
