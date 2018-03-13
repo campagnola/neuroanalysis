@@ -70,7 +70,7 @@ class PatchClampTestPulse(PatchClampRecording):
     def time_constant(self):
         """The membrane time constant measured from this test pulse.
         """
-        return self.analysis['capacitance']
+        return self.analysis['time_constant']
 
     @property
     def baseline_potential(self):
