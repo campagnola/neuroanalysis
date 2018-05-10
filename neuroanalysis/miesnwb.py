@@ -405,13 +405,14 @@ class MiesRecording(PatchClampRecording):
 class MiesTestPulse(PatchClampTestPulse):
     def __init__(self, entry, rec):
         chan = rec.device_id
-        clamp_mode = 'vc' if np.isnan(entry['TP Baseline Vm'][chan]) else 'ic'
         self._nb_entry = {}
         for k,v in entry.items():
             if isinstance(v, np.ndarray):
                 self._nb_entry[k] = v[chan]
             else:
                 self._nb_entry[k] = v
+
+        clamp_mode = 'vc' if np.isnan(self._nb_entry['TP Baseline Vm']) else 'ic'
         
         PatchClampRecording.__init__(self,
             device_type=rec.device_type, 
