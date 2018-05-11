@@ -25,9 +25,10 @@ def test_stimuli():
     assert sp1_eval.dt == 0.001
     sp1_data = sp1_eval.data
     assert sp1_data.shape == (1000,)
-    assert np.all(sp1_data[:100] == 0)
-    assert np.all(sp1_data[100:300] == 10)
-    assert np.all(sp1_data[300:] == 0)
+
+    test_data = np.zeros(1000)
+    test_data[100:300] = 10
+    assert np.all(sp1_data == test_data)
 
     sp1.parent = s1
     assert sp1.parent is s1
@@ -46,7 +47,7 @@ def test_stimuli():
     assert s1.items == ()
 
     # add in a second pulse
-    sp2 = stimuli.SquarePulse(start_time=0.1, duration=0.2, amplitude=10, description="square pulse 2", parent=s1)
+    sp2 = stimuli.SquarePulse(start_time=0.2, duration=0.2, amplitude=-10, description="square pulse 2", parent=s1)
     assert sp2.description == "square pulse 2"
     assert sp2.parent is s1
     assert s1.items == (sp2,)
@@ -59,4 +60,18 @@ def test_stimuli():
     s1.insert_item(0, sp1)
     assert sp1.parent is s1
     assert s1.items == (sp1, sp2)
+
+    s1_data = s1.eval(n_pts=1000, dt=0.001).data
+    test_data[200:400] -= 10
+    assert np.all(sp1_data == test_data)
+    
+
+    # test a pulse train
+    pt1 = stimuli.SquarePulseTrain(start_time=0.5, n_pulses=3, pulse_duration=0.02, interval=0.1, amplitude=1.0, parent=s1)
+    assert p1.items == (sp1, sp2, pt1)
+    test_data[500:520] += 1
+    test_data[600:620] += 1
+    test_data[700:720] += 1
+    assert np.all(sp1_data == test_data)
+
 
