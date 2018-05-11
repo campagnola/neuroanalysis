@@ -29,13 +29,15 @@ class Stimulus(object):
     1. A waveform with two square pulses::
 
         pulse1 = SquarePulse(start_time=0.01, duration=0.01, amplitude=-50e-12)
+
+
     """
     def __init__(self, description, start_time=0, items=None, parent=None):
         self.description = description
         self._start_time = start_time
         
         self._items = []
-        self._parent = WeakRef(None)
+        self._parent = WeakRef(None)  
         self.parent = parent
 
         for item in (items or []):
@@ -100,10 +102,10 @@ class Stimulus(object):
         item.parent = self        
 
     @property
-    def start_time(self):
-        """The global starting time of this stimulus relative to 0.
+    def global_start_time(self):
+        """The global starting time of this stimulus.
         
-        This is computed as the sum of all starting times in the ancestry
+        This is computed as the sum of all ``local_start_time``s in the ancestry
         of this item (including this item itself).
         """
         return sum([i.local_start_time for i in self.ancestry])
@@ -156,7 +158,8 @@ class SquarePulse(Stimulus):
 
     def eval(self, **kwds):
         trace = Stimulus.eval(self, **kwds)
-        trace.time_slice(self.start_time, self.start_time+self.duration).data[:] += self.amplitude
+        start = self.global_start_time
+        trace.time_slice(start, start+self.duration).data[:] += self.amplitude
         return trace
 
 
@@ -168,12 +171,20 @@ class SquarePulseTrain(Stimulus):
         self.pulse_duration = pulse_duration
         self.amplitude = amplitude
         self.interval = interval
-        self.pulse_times = np.arange(n_pulses) * pulse_interval + start_time
-        pulses = []
-        for i,t in enumerate(self.pulse_times):
+        Stimulus.__init__(self, description=description, start_time=start_time, parent=parent)
+
+        pulse_times = np.arange(n_pulses) * interval
+        for i,t in enumerate(pulse_times):
             pulse = SquarePulse(start_time=t, duration=pulse_duration, amplitude=amplitude, parent=self)
             pulse.pulse_number = i
-        Stimulus.__init__(self, description=description, start_time=start_time, parent=parent, items=pulses)
+
+    @property
+    def global_pulse_times(self):
+        return [t + self.global_start_time for t in self.local_pulse_times]
+
+    @property
+    def local_pulse_times(self):
+        return [item.local_start_time for item in self.items]
         
 
 class Ramp(Stimulus):

@@ -10,13 +10,13 @@ def test_stimuli():
     assert s1.parent is None
     assert len(s1.items) == 0
 
-    # test a square pulse
+    # test SquarePulse
     sp1 = stimuli.SquarePulse(start_time=0.1, duration=0.2, amplitude=10)
     assert sp1.type == "SquarePulse"
     assert sp1.description == 'square pulse'
     assert sp1.parent is None
     assert len(sp1.items) == 0
-    assert sp1.start_time == 0.1
+    assert sp1.global_start_time == 0.1
     assert sp1.local_start_time == 0.1
     assert sp1.duration == 0.2
     assert sp1.amplitude == 10
@@ -66,12 +66,27 @@ def test_stimuli():
     # test waveform eval with two pulses
     s1_data = s1.eval(n_pts=1000, dt=0.001).data
     test_data[200:400] -= 10
-    assert np.all(sp1_data == test_data)
+    assert np.all(s1_data == test_data)
     
-    # test a pulse train
+    # test PulseTrain
     pt1 = stimuli.SquarePulseTrain(start_time=0.5, n_pulses=3, pulse_duration=0.02, interval=0.1, amplitude=1.0, parent=s1)
-    assert p1.items == (sp1, sp2, pt1)
+    assert s1.items == (sp1, sp2, pt1)
+
+    # check sub-pulse start times
+    assert pt1.global_start_time == 0.5
+    assert pt1.local_start_time == 0.5
+    assert pt1.items[0].global_start_time == 0.5
+    assert pt1.items[0].local_start_time == 0.0
+    assert pt1.items[1].global_start_time == 0.6
+    assert pt1.items[1].local_start_time == 0.1
+    assert pt1.items[2].global_start_time == 0.7
+    assert pt1.items[2].local_start_time == 0.2
+    assert pt1.local_pulse_times == [0.0, 0.1, 0.2]
+    assert pt1.global_pulse_times == [0.5, 0.6, 0.7]
+
+    # test waveform eval with all three items
+    s1_data = s1.eval(n_pts=1000, dt=0.001).data
     test_data[500:520] += 1
     test_data[600:620] += 1
     test_data[700:720] += 1
-    assert np.all(sp1_data == test_data)
+    assert np.all(s1_data == test_data)
