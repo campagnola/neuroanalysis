@@ -1,6 +1,15 @@
+from collections import OrderedDict
 import numpy as np
 from .util import WeakRef
 from .data import Trace
+
+
+def load_stimulus(state):
+    """Re-create a Stimulus structure from a previously saved state.
+
+    States are generated using Stimulus.save().
+    """
+    return Stimulus.load(state)
 
 
 class Stimulus(object):
@@ -32,9 +41,14 @@ class Stimulus(object):
 
 
     """
-    def __init__(self, description, start_time=0, items=None, parent=None):
+    _subclasses = {}
+
+    _attributes = ['description', 'start_time', 'units']
+
+    def __init__(self, description, start_time=0, units=None, items=None, parent=None):
         self.description = description
         self._start_time = start_time
+        self.units = units
         
         self._items = []
         self._parent = WeakRef(None)  
@@ -46,8 +60,6 @@ class Stimulus(object):
     @property
     def type(self):
         """String type of this stimulus.
-
-        The default implementation returns the name of this class.
         """
         return type(self).__name__
 
@@ -105,13 +117,13 @@ class Stimulus(object):
     def global_start_time(self):
         """The global starting time of this stimulus.
         
-        This is computed as the sum of all ``local_start_time``s in the ancestry
+        This is computed as the sum of all ``start_time``s in the ancestry
         of this item (including this item itself).
         """
-        return sum([i.local_start_time for i in self.ancestry])
+        return sum([i.start_time for i in self.ancestry])
 
     @property
-    def local_start_time(self):
+    def start_time(self):
         """The starting time of this stimulus relative to its parent's start time.
         """
         return self._start_time
@@ -142,19 +154,63 @@ class Stimulus(object):
             data = np.zeros(len(time_values))
         else:
             data = np.zeros(n_pts)
-        return Trace(data, t0=t0, dt=dt, sample_rate=sample_rate, time_values=time_values)
+        return Trace(data, t0=t0, dt=dt, sample_rate=sample_rate, time_values=time_values, units=self.units)
 
     def __repr__(self):
         return '<{class_name} "{desc}" 0x{id:x}>'.format(class_name=type(self).__name__, desc=self.description, id=id(self))
+
+    def __eq__(self, other):
+        if self.type != other.type:
+            return False
+        if len(self.items) != len(other.items):
+            return False
+        for name in self._attributes:
+            if getattr(self, name) != getattr(other, name):
+                return False
+        for i in range(len(self.items)):
+            if self.items[i] != other.items[i]:
+                return False
+        return True
+
+    def save(self):
+        state = OrderedDict([
+            ('type', self.type),
+            ('args', OrderedDict([('start_time', self.start_time)])),
+        ])
+        for name in self._attributes:
+            state['args'][name] = getattr(self, name)
+        state['items'] = [item.save() for item in self.items]
+        return state
+
+    @classmethod
+    def load(cls, state):
+        item_type = state['type']
+        item_class = cls.get_stimulus_class(item_type)
+        child_items = [cls.load(item_state) for item_state in state['items']]
+        if len(child_items) > 0:
+            return item_class(items=child_items, **state['args'])
+        else:
+            return item_class(**state['args'])
+
+    @classmethod
+    def get_stimulus_class(cls, name):
+        if name not in cls._subclasses:
+            cls._subclasses = {sub.__name__:sub for sub in cls.__subclasses__()}
+            cls._subclasses[cls.__name__] = cls
+        if name not in cls._subclasses:
+            raise KeyError('Unknown stimulus class "%s"' % name)
+        return cls._subclasses[name]
 
 
 class SquarePulse(Stimulus):
     """A square pulse stimulus.
     """
-    def __init__(self, start_time, duration, amplitude, description="square pulse", parent=None):
+    _attributes = Stimulus._attributes + ['duration', 'amplitude']
+
+    def __init__(self, start_time, duration, amplitude, description="square pulse", units=None, parent=None):
         self.duration = duration
         self.amplitude = amplitude
-        Stimulus.__init__(self, description=description, start_time=start_time, parent=parent)
+        Stimulus.__init__(self, description=description, start_time=start_time, units=units, parent=parent)
 
     def eval(self, **kwds):
         trace = Stimulus.eval(self, **kwds)
@@ -166,35 +222,45 @@ class SquarePulse(Stimulus):
 class SquarePulseTrain(Stimulus):
     """A train of identical, regularly-spaced square pulses.
     """
-    def __init__(self, start_time, n_pulses, pulse_duration, amplitude, interval, description="square pulse train", parent=None):
+    _attributes = Stimulus._attributes + ['n_pulses', 'pulse_duration', 'amplitude', 'interval']
+
+    def __init__(self, start_time, n_pulses, pulse_duration, amplitude, interval, description="square pulse train", units=None, parent=None):
         self.n_pulses = n_pulses
         self.pulse_duration = pulse_duration
         self.amplitude = amplitude
         self.interval = interval
-        Stimulus.__init__(self, description=description, start_time=start_time, parent=parent)
+        Stimulus.__init__(self, description=description, start_time=start_time, units=units, parent=parent)
 
         pulse_times = np.arange(n_pulses) * interval
         for i,t in enumerate(pulse_times):
-            pulse = SquarePulse(start_time=t, duration=pulse_duration, amplitude=amplitude, parent=self)
+            pulse = SquarePulse(start_time=t, duration=pulse_duration, amplitude=amplitude, parent=self, units=units)
             pulse.pulse_number = i
 
     @property
     def global_pulse_times(self):
-        return [t + self.global_start_time for t in self.local_pulse_times]
+        return [t + self.global_start_time for t in self.pulse_times]
 
     @property
-    def local_pulse_times(self):
-        return [item.local_start_time for item in self.items]
+    def pulse_times(self):
+        return [item.start_time for item in self.items]
+
+    def save(self):
+        state = Stimulus.save(self)
+        state['items'] = []  # don't save auto-generated items
+        return state
+
         
 
 class Ramp(Stimulus):
     """A linear ramp.
     """
-    def __init__(self, start_time, duration, slope, initial_value=0, description="ramp", parent=None):
+    _attributes = Stimulus._attributes + ['duration', 'slope', 'initial_value']
+
+    def __init__(self, start_time, duration, slope, initial_value=0, description="ramp", units=None, parent=None):
         self.duration = duration
         self.slope = slope
         self.initial_value = initial_value
-        Stimulus.__init__(self, description=description, start_time=start_time, parent=parent)
+        Stimulus.__init__(self, description=description, start_time=start_time, parent=parent, units=units)
 
     def eval(self, **kwds):
         trace = Stimulus.eval(self, **kwds)
