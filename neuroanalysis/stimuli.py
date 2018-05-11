@@ -35,10 +35,19 @@ class Stimulus(object):
     Examples
     --------
 
-    1. A waveform with two square pulses::
+    A waveform with two square pulses::
 
-        pulse1 = SquarePulse(start_time=0.01, duration=0.01, amplitude=-50e-12)
+        stimulus = Stimulus(items=[
+            SquarePulse(start_time=0.01, duration=0.01, amplitude=-50e-12),
+            SquarePulse(start_time=0.2, duration=0.5, amplitude=200e-12),
+        ], units='A')
 
+    A waveform with a square pulse followed by a pulse train::
+
+        stimulus = Stimulus(items=[
+            SquarePulse(start_time=0.01, duration=0.01, amplitude=-50e-12),
+            SquarePulseTrain(start_time=0.2, n_pulses=8, pulse_duration=0.002, amplitude=1.6e-9, interval=0.02),
+        ], units='A')
 
     """
     _subclasses = {}
@@ -204,6 +213,20 @@ class Stimulus(object):
 
 class SquarePulse(Stimulus):
     """A square pulse stimulus.
+
+    Parameters
+    ----------
+    start_time : float
+        The starting time of the first pulse in the train, relative to the start time of the parent
+        stimulus.
+    duration : float
+        The duration in seconds of the pulse.
+    amplitude : float
+        The amplitude of the pulse.
+    description : str
+        Optional string describing the stimulus. The default value is 'square pulse train'.
+    units : str | None
+        Optional string describing the units of values in the stimulus.
     """
     _attributes = Stimulus._attributes + ['duration', 'amplitude']
 
@@ -221,6 +244,24 @@ class SquarePulse(Stimulus):
 
 class SquarePulseTrain(Stimulus):
     """A train of identical, regularly-spaced square pulses.
+
+    Parameters
+    ----------
+    start_time : float
+        The starting time of the first pulse in the train, relative to the start time of the parent
+        stimulus.
+    n_pulses : int
+        The number of pulses in the train.
+    pulse_duration : float
+        The duration in seconds of a single pulse.
+    amplitude : float
+        The amplitude of a single pulse.
+    interval : float
+        The time in seconds between the onset of adjacent pulses.
+    description : str
+        Optional string describing the stimulus. The default value is 'square pulse train'.
+    units : str | None
+        Optional string describing the units of values in the stimulus.
     """
     _attributes = Stimulus._attributes + ['n_pulses', 'pulse_duration', 'amplitude', 'interval']
 
@@ -238,10 +279,14 @@ class SquarePulseTrain(Stimulus):
 
     @property
     def global_pulse_times(self):
+        """A list of the global start times of all pulses in the train.
+        """
         return [t + self.global_start_time for t in self.pulse_times]
 
     @property
     def pulse_times(self):
+        """A list of the start times of all pulses in the train.
+        """
         return [item.start_time for item in self.items]
 
     def save(self):
