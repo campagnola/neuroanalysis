@@ -60,10 +60,13 @@ class Stimulus(object):
         old_parent = self.parent
         if old_parent is new_parent:
             return
-        if old_parent is not None:
-            old_parent.remove_item(self)
         self._parent = WeakRef(new_parent)
-        if self not in new_parent.items:
+        if old_parent is not None:
+            try:
+                old_parent.remove_item(self)
+            except ValueError:
+                pass  # already removed
+        if new_parent is not None and self not in new_parent.items:
             new_parent.append_item(self)
 
     @property
@@ -138,6 +141,9 @@ class Stimulus(object):
         else:
             data = np.zeros(n_pts)
         return Trace(data, t0=t0, dt=dt, sample_rate=sample_rate, time_values=time_values)
+
+    def __repr__(self):
+        return '<{class_name} "{desc}" 0x{id:x}>'.format(class_name=type(self).__name__, desc=self.description, id=id(self))
 
 
 class SquarePulse(Stimulus):
