@@ -694,11 +694,22 @@ class Trace(Container):
     
     @t0.setter
     def t0(self, t0):
-        if self._time_values is not None and self._time_values[0] != t0:
+        if self.has_time_values and self._time_values[0] != t0:
             self._time_values = self._time_values + (t0 - self._time_values[0])
         else:
             self._meta['t0'] = t0
             self._generated_time_values = None
+
+    @property
+    def t_end(self):
+        """The last time value in this Trace.
+        """
+        if not self.has_timing:
+            raise TypeError("No sample timing is specified for this trace.")
+        if self.has_time_values:
+            return self.time_values[-1]
+        else:
+            return self.t0 + (len(self.data)-1) * self.dt
 
     @property
     def time_values(self):
@@ -768,10 +779,14 @@ class Trace(Container):
 
     @property
     def units(self):
+        """Units string for the data in this Trace.
+        """
         return self._meta['units']
 
     @property
     def shape(self):
+        """The shape of the array stored in this Trace.
+        """
         return self.data.shape
     
     def __len__(self):
@@ -779,21 +794,41 @@ class Trace(Container):
     
     @property
     def duration(self):
+        """Duration of this Trace in seconds.
+
+        If time values are specified for this trace, then this property
+        is the difference between the first and last time values. 
+
+        If only a sample rate or dt are specified, then this returns
+        ``len(self) * dt``. 
+        """
         if self.has_time_values:
             return self.time_values[-1] - self.t0
         else:
-            return self.shape[0] * self.dt
+            return len(self) * self.dt
 
     @property
     def ndim(self):
+        """Number of dimensions of the array contained in this Trace.
+        """
         return self.data.ndim
     
     @property
     def channel_id(self):
+        """The name of the Recording channel that contains this Trace.
+
+        For example::
+
+            trace = my_recording['primary']
+            trace.recording   # returns my_recording
+            trace.channel_id  # returns 'primary'
+        """
         return self._meta['channel_id']
     
     @property
     def recording(self):
+        """The Recording that contains this trace.
+        """
         return self._recording
 
     def copy(self, data=None, time_values=None, **kwds):
@@ -997,7 +1032,7 @@ class TraceView(Trace):
 
     @property
     def source_indices(self):
-        """Return the indices of this view on the original Trace.
+        """The indices of this view on the original Trace.
         """
         v = self
         start = 0
