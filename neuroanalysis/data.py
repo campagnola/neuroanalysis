@@ -412,6 +412,7 @@ class PatchClampRecording(Recording):
     * Current- or voltage-clamp mode
     * Minimum one recorded channel ('primary'), possibly more
     * Includes stimulus waveform ('command')
+    * Stimulus metadata description
     * Metadata about amplifier state:
         * clamp_mode ('ic' 'i0', or 'vc')
         * holding potential (vc only)
@@ -426,9 +427,11 @@ class PatchClampRecording(Recording):
     """
     def __init__(self, *args, **kwds):
         meta = OrderedDict()
+
         extra_meta = ['cell_id', 'clamp_mode', 'patch_mode', 'holding_potential', 'holding_current',
                       'bridge_balance', 'lpf_cutoff', 'pipette_offset', 'baseline_potential',
-                      'baseline_current', 'baseline_rms_noise', 'stim_name']
+                      'baseline_current', 'baseline_rms_noise', 'stimulus']
+                      
         for k in extra_meta:
             meta[k] = kwds.pop(k, None)
         self._baseline_data = None
@@ -452,6 +455,10 @@ class PatchClampRecording(Recording):
         """The state of the membrane patch. E.g. 'whole cell', 'cell attached', 'loose seal', 'bath', 'inside out', 'outside out'
         """
         return self._meta['patch_mode']
+
+    @property
+    def stimulus(self):
+        return self._meta.get('stimulus', None)
 
     @property
     def holding_potential(self):
@@ -704,12 +711,17 @@ class Trace(Container):
     def t_end(self):
         """The last time value in this Trace.
         """
+        return self.time_at(-1)
+
+    def time_at(self, index):
+        """Return the time at a specified index.
+        """
         if not self.has_timing:
             raise TypeError("No sample timing is specified for this trace.")
         if self.has_time_values:
-            return self.time_values[-1]
+            return self.time_values[index]
         else:
-            return self.t0 + (len(self.data)-1) * self.dt
+            return self.t0 + index * self.dt
 
     @property
     def time_values(self):

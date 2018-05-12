@@ -2,6 +2,7 @@ import numpy as np
 
 from data import PatchClampRecording, Trace
 from fitting import Exp
+from stimuli import find_square_pulses
 
 
 class PatchClampTestPulse(PatchClampRecording):
@@ -19,22 +20,22 @@ class PatchClampTestPulse(PatchClampRecording):
         cmd = rec['command'][start:stop]
         
         # find pulse
-        cdata = cmd.data
-        mask = cdata == cdata[0]
-        inds = np.argwhere(mask[:-1] != mask[1:])[:,0]
-        
-        if len(inds) != 2:
+        pulses = find_square_pulses(cmd)        
+        if len(pulses) == 0:
             raise ValueError("Could not find square pulse in command waveform.")
-        amp = cdata[inds[0] + 1] - cdata[0]
+        elif len(pulses) > 1:
+            raise ValueError("Found multiple square pulse in command waveform.")
+        pulse = pulses[0]
+        pulse.description = 'test pulse'
         
         PatchClampRecording.__init__(self,
             device_type=rec.device_type, 
             device_id=rec.device_id,
             start_time=rec.start_time,
             channels={'primary': pri, 'command': cmd}
-        )
-        self._meta.update({'stim_name': 'test_pulse', 'pulse_amplitude': amp,
-                           'pulse_edges': inds})
+        )        
+        self._meta['stimulus'] = pulse
+                           
         for k in ['clamp_mode', 'holding_potential', 'holding_current', 'bridge_balance',
                   'lpf_cutoff', 'pipette_offset']:
             self._meta[k] = rec._meta[k]

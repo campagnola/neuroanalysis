@@ -331,18 +331,17 @@ def find_square_pulses(trace, baseline=None):
         "no pulse". If no baseline is specified, then the first sample of
         *trace* is used.
     """
-    time_vals = trace.time_values
     if baseline is None:
-        baseline = trace[0]
-    sdiff = np.diff(trace)
+        baseline = trace.data[0]
+    sdiff = np.diff(trace.data)
     changes = np.argwhere(sdiff != 0)[:, 0] + 1
     pulses = []
     for i, start in enumerate(changes):
-        amp = trace[start] - baseline
+        amp = trace.data[start] - baseline
         if amp != 0:
             stop = changes[i+1] if (i+1 < len(changes)) else len(trace)
-            t_start = time_values[start]
-            duration = stop - start * trace.dt
-            pulses.append(SquarePulse(t_start, duration, amp))
+            t_start = trace.time_at(start)
+            duration = (stop - start) * trace.dt
+            pulses.append(SquarePulse(start_time=t_start, duration=duration, amplitude=amp, units=trace.units))
             pulses[-1].pulse_number = i
     return pulses
