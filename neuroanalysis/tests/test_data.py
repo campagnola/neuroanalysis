@@ -73,6 +73,7 @@ def test_trace_timing():
     # test nested view
     view2 = view.time_slice(view.t0 + 20*dt, view.t0 + 50*dt)
     assert view2.t0 == view.time_values[20] == tr.time_values[120]
+    check_timing(view2, data=a[120:150], time_values=t[120:150], has_timing=True, has_time_values=False, regularly_sampled=True)
     
     # trace with only sample_rate
     tr = Trace(a, sample_rate=sr)
@@ -82,6 +83,7 @@ def test_trace_timing():
     assert tr.has_timing
     assert not tr.has_time_values
     assert tr.regularly_sampled
+    check_timing(tr, data=a, time_values=t, has_timing=True, has_time_values=False, regularly_sampled=True)
 
     # test view
     view = tr[100:200]
@@ -90,6 +92,7 @@ def test_trace_timing():
     assert view.sample_rate == tr.sample_rate
     assert view._meta['dt'] is None
     assert not view.has_time_values
+    check_timing(view, data=a[100:200], time_values=t[100:200], has_timing=True, has_time_values=False, regularly_sampled=True)
     
     
     # trace with only regularly-sampled time_values
@@ -100,6 +103,7 @@ def test_trace_timing():
     assert tr.has_timing
     assert tr.has_time_values
     assert tr.regularly_sampled
+    check_timing(tr, data=a, time_values=t, has_timing=True, has_time_values=True, regularly_sampled=True)
     
     # test view
     view = tr[100:200]
@@ -109,7 +113,8 @@ def test_trace_timing():
     assert view._meta['sample_rate'] is None
     assert view.has_time_values
     assert view.regularly_sampled
-    
+    check_timing(view, data=a[100:200], time_values=t[100:200], has_timing=True, has_time_values=True, regularly_sampled=True)
+
 
     # trace with irregularly-sampled time values
     t1 = np.cumsum(np.random.normal(loc=1, scale=0.02, size=a.shape))
@@ -119,6 +124,7 @@ def test_trace_timing():
     assert tr.has_timing
     assert tr.has_time_values
     assert not tr.regularly_sampled
+    # check_timing(tr, data=a, time_values=t1, has_timing=True, has_time_values=True, regularly_sampled=False)
 
     # test view
     view = tr[100:200]
@@ -128,6 +134,7 @@ def test_trace_timing():
     assert view._meta['sample_rate'] is None
     assert view.has_time_values
     assert not view.regularly_sampled
+    # check_timing(view, data=a[100:200], time_values=t[100:200], has_timing=True, has_time_values=False, regularly_sampled=True)
 
 
 def check_timing(tr, data, time_values, has_timing, has_time_values, regularly_sampled):

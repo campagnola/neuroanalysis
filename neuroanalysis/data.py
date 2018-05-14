@@ -784,7 +784,15 @@ class Trace(Container):
             t = np.asarray(t)
 
         if self.has_time_values:
-            return np.searchsorted(self.time_values, t)
+            inds1 = np.searchsorted(self.time_values, t)
+            inds0 = inds1 - 1
+            # select closest sample
+            dif1 = abs(self.time_values[inds1] - t)
+            dif0 = abs(self.time_values[inds0] - t)
+            inds = np.where(dif0 < dif1, inds0, inds1)
+            if np.isscalar(t):
+                inds = int(inds)
+            return inds
         else:
             # Be careful to avoid fp precision errors when converting back to integer index
             sample_rate = self._meta.get('sample_rate')
@@ -795,10 +803,10 @@ class Trace(Container):
             
             inds = np.round(inds)
 
-            if isinstance(inds, np.ndarray):
-                return inds.astype(int)
-            else:
+            if np.isscalar(t):
                 return int(inds)        
+            else:
+                return inds.astype(int)
 
     @property
     def time_values(self):
@@ -845,7 +853,8 @@ class Trace(Container):
         if self._regularly_sampled is None:
             tvals = self.time_values
             dt = np.diff(tvals)
-            self._regularly_sampled = np.all(dt - dt[0] < dt.mean() * 0.01)
+            avg_dt = dt.mean()
+            self._regularly_sampled = np.all(np.abs(dt - avg_dt) < (avg_dt * 0.01))
         return self._regularly_sampled
 
     @property
