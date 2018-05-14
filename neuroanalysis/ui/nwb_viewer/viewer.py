@@ -59,7 +59,8 @@ class MiesNwbExplorer(QtGui.QSplitter):
 
         for i,sweep in enumerate(self._nwb.contents):
             recs = sweep.recordings
-            stim_name = recs[0].meta['stim_name']
+            stim = recs[0].meta.get('stimulus')
+            stim_name = '' if stim is None else stim.description
             modes = ''
             V_holdings = ''
             I_holdings = ''
@@ -78,26 +79,7 @@ class MiesNwbExplorer(QtGui.QSplitter):
             item.setCheckState(0, QtCore.Qt.Unchecked)
             item.data = sweep
             self.sweep_tree.addTopLevelItem(item)
-            
-        #for group in self._nwb.sweep_groups():
-            #meta = [group.sweeps[0].traces()[ch].meta() for ch in group.sweeps[0].channels()]
-
-            #mode = []
-            #holding = []
-            #for m in meta:
-                #mode.append('V' if m.get('Clamp Mode', '') == 0 else 'I')
-                #holding.append(m.get('%s-Clamp Holding Level'%mode[-1], ''))
-            #holding = ' '.join(['%0.1f'%h if h is not None else '__._' for h in holding])
-            #mode = ' '.join(mode)
-
-            #gitem = QtGui.QTreeWidgetItem([meta[0]['stim_name'], str(mode), str(holding)])
-            #gitem.data = group
-            #self.sweep_tree.addTopLevelItem(gitem)
-            #for sweep in group.sweeps:
-                #item = QtGui.QTreeWidgetItem([str(sweep.sweep_id)])
-                #item.data = sweep
-                #gitem.addChild(item)
-
+ 
         self.sweep_tree.header().resizeSections(QtGui.QHeaderView.ResizeToContents)
 
     def selection(self):
