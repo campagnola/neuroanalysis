@@ -1040,7 +1040,24 @@ class TraceView(Trace):
 
     @property
     def parent(self):
-        return self._parent_trace
+        return self.source_trace.parent
+
+    @property
+    def recording(self):
+        """The Recording that contains this trace.
+        """
+        return self.source_trace.recording
+
+    @property
+    def source_trace(self):
+        """The original trace that is viewed by this TraceView.
+        """
+        v = self
+        while True:
+            v = v._parent_trace
+            if not isinstance(v, TraceView):
+                break
+        return v
 
     @property
     def source_indices(self):
@@ -1050,7 +1067,7 @@ class TraceView(Trace):
         start = 0
         while True:
             start += self._view_slice.start
-            v = v.parent
+            v = v._parent_trace
             if not isinstance(v, TraceView):
                 break
         return start, start + len(self)
