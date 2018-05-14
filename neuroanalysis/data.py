@@ -590,6 +590,33 @@ class Trace(Container):
     
     Traces may specify units, a starting time, and either a sample period or an
     array of time values.
+
+    Parameters
+    ----------
+    data : array | None
+        Array of data contained in this Trace.
+    dt : float | None
+        Optional value specifying the time difference between any two adjacent samples
+        in the data; inverse of *sample_rate*. See ``Trace.dt``.
+    t0 : float | None
+        Optional time value of the first sample in the data, relative to *start_time*. Default is 0.
+         See ``Trace.t0``.
+    sample_rate : float | None
+        Optional value specifying the sampling rate of the data; inverse of *dt*.
+         See ``Trace.sample_rate``.
+    start_time : float | None
+        Optional value giving the absloute starting time of the Trace as a unix timestamp
+        (seconds since epoch).  See ``Trace.start_time``.
+    time_values : array | None
+        Optional array of the time values for each sample, relative to *start_time*. 
+        This option can be used to specify data with timepoints that are irregularly sampled,
+        and cannot be used with *dt*, *sample_rate*, or *t0*.
+    units : str | None
+        Optional string specifying the units associated with *data*. It is recommended
+        to use unscaled SI units (e.g. 'V' instead of 'mV') where possible.
+        See ``Trace.units``.
+    meta : 
+        Any extra keyword arguments are interpreted as custom metadata and added to ``self.meta``.
     """
     def __init__(self, data=None, dt=None, t0=None, sample_rate=None, start_time=None, time_values=None, units=None, channel_id=None, recording=None, **meta):
         Container.__init__(self)
@@ -622,6 +649,7 @@ class Trace(Container):
         self._meta.update(meta)
         self._time_values = time_values
         self._generated_time_values = None
+        self._regularly_sampled = None
         self._recording = recording
         
     @property
@@ -714,14 +742,63 @@ class Trace(Container):
         return self.time_at(-1)
 
     def time_at(self, index):
-        """Return the time at a specified index.
+        """Return the time at a specified index(es).
+
+        Parameters
+        ----------
+        index : int | array-like
+            The array index(es) for which time value(s) will be returned.
         """
         if not self.has_timing:
             raise TypeError("No sample timing is specified for this trace.")
+
+        if not np.isscalar(index):
+            index = np.asarray(index)
+
         if self.has_time_values:
             return self.time_values[index]
         else:
-            return self.t0 + index * self.dt
+            # Be careful to minimize fp precision errors -- 
+            #   time * dt != time / sample_rate != time * (1 / sample_rate)
+            sample_rate = self._meta.get('sample_rate')
+            if sample_rate is None:
+                return (index * self.dt) + self.t0
+            else:
+                return (index * (1.0 / sample_rate)) + self.t0
+ 
+    def index_at(self, t):
+        """Return the index at specified timepoint(s).
+
+        Returned values are *rounded* to the nearest integer; may yield unexpected
+        results if the requested time values are half-way between samples.
+
+        Parameters
+        ----------
+        t : float | array-like
+            The time value(s) for which array index(es) will be returned.
+        """
+        if not self.has_timing:
+            raise TypeError("No sample timing is specified for this trace.")
+
+        if not np.isscalar(t):
+            t = np.asarray(t)
+
+        if self.has_time_values:
+            return np.searchsorted(self.time_values, t)
+        else:
+            # Be careful to avoid fp precision errors when converting back to integer index
+            sample_rate = self._meta.get('sample_rate')
+            if sample_rate is None:
+                inds = (t - self.t0) * (1.0 / self.dt)
+            else:
+                inds = (t - self.t0) * sample_rate
+            
+            inds = np.round(inds)
+
+            if isinstance(inds, np.ndarray):
+                return inds.astype(int)
+            else:
+                return int(inds)        
 
     @property
     def time_values(self):
@@ -736,18 +813,14 @@ class Trace(Container):
         If no timing information at all was specified for this Trace, then
         accessing this property raises TypeError.
         """
-        if self._time_values is not None:
+        if not self.has_timing:
+            raise TypeError("No sample timing is specified for this trace.")
+
+        if self.has_time_values:
             return self._time_values
         
         if self._generated_time_values is None:
-            dt = self._meta['dt']
-            rate = self._meta['sample_rate']
-            if dt is not None:
-                self._generated_time_values = self.t0 + np.arange(len(self.data)) * dt
-            elif rate is not None:
-                self._generated_time_values = self.t0 + np.arange(len(self.data)) * (1.0 / rate)
-            else:
-                raise TypeError("No sample timing is specified for this trace.")
+            self._generated_time_values = self.time_at(np.arange(len(self.data)))
         
         return self._generated_time_values
 
@@ -769,9 +842,11 @@ class Trace(Container):
         if not self.has_time_values:
             return True
         
-        tvals = self.time_values
-        dt = np.diff(tvals)
-        return np.all(dt - dt[0] < dt.mean() * 0.01)
+        if self._regularly_sampled is None:
+            tvals = self.time_values
+            dt = np.diff(tvals)
+            self._regularly_sampled = np.all(dt - dt[0] < dt.mean() * 0.01)
+        return self._regularly_sampled
 
     @property
     def has_timing(self):
@@ -788,6 +863,45 @@ class Trace(Container):
         specified for this Trace.
         """
         return self._time_values is not None
+
+    def time_slice(self, start, stop):
+        """Return a view of this trace with a specified start/stop time.
+        
+        Times are given relative to t0, and may be None to specify the
+        beginning or end of the trace.
+        """
+        if self.regularly_sampled:
+            i1 = int(np.round((start - self.t0) / self.dt)) if start is not None else None
+            i2 = i1 + int(np.round((stop - start) / self.dt)) if stop is not None else None
+        else:
+            i1 = np.argwhere(self.time_values >= start)[0,0] if start is not None else None
+            i2 = np.argwhere(self.time_values >= stop)[0,0] if stop is not None else None
+        return self[i1:i2]
+
+    def value_at(self, t, interp='linear'):
+        """Return the value of this trace at specific timepoints.
+
+        By default, values are linearly interpolated from the data array.
+
+        Parameters
+        ----------
+        t : float | array-like
+            The time value(s) at which data value(s) will be returned.
+        interp : 'linear' | 'nearest'
+            If 'linear', then ``numpy.interp`` is used to interpolate values between adjacent samples.
+            If 'nearest', then the sample nearest to each time value is returned.
+            Default is 'linear'.
+        """
+        if not np.isscalar(t):
+            t = np.asarray(t)
+
+        if interp == 'linear':
+            return np.interp(t, self.time_values, self.data)
+        elif interp == 'nearest':
+            inds = self.index_at(t)
+            return self.data[inds]
+        else:
+            raise ValueError('unknown interpolation mode "%s"' % interp)
 
     @property
     def units(self):
@@ -971,25 +1085,6 @@ class Trace(Container):
             dt = self.dt * self.sample_rate / sample_rate
             return self.copy(data=data, dt=dt)
 
-    def time_slice(self, start, stop):
-        """Return a view of this trace with a specified start/stop time.
-        
-        Times are given relative to t0, and may be None to specify the
-        beginning or end of the trace.
-        """
-        if self.regularly_sampled:
-            i1 = int(np.round((start - self.t0) / self.dt)) if start is not None else None
-            i2 = i1 + int(np.round((stop - start) / self.dt)) if stop is not None else None
-        else:
-            i1 = np.argwhere(self.time_values >= start)[0,0] if start is not None else None
-            i2 = np.argwhere(self.time_values >= stop)[0,0] if stop is not None else None
-        return self[i1:i2]
-
-    def value_at(self, t, interp='linear'):
-        """Return the value of this trace at specific timepoints.
-        """
-        return np.interp(t, self.time_values, self.data)
-
     def __mul__(self, x):
         return self.copy(data=self.data * x)
 
@@ -1029,14 +1124,27 @@ class TraceView(Trace):
         self._parent_trace = trace
         self._view_slice = sl
         inds = sl.indices(len(trace))
+        self._view_indices = inds
         data = trace.data[sl]
         meta = trace.meta.copy()
         if trace.has_time_values:
             meta['time_values'] = trace.time_values[sl]
         elif trace.has_timing:
-            meta['t0'] = trace.t0 + inds[0] * trace.dt
+            meta['t0'] = trace.time_at(inds[0])
             
         Trace.__init__(self, data, recording=trace.recording, **meta)
+
+    @property
+    def time_values(self):
+        return self._parent_trace.time_values[self._view_slice]
+
+    def time_at(self, index):
+        if not np.isscalar(index):
+            index = np.asarray(index)
+        return self._parent_trace.time_at(index + self._view_indices[0])
+
+    def index_at(self, t):
+        return self._parent_trace.index_at(t) - self._view_indices[0]
 
     @property
     def parent(self):
