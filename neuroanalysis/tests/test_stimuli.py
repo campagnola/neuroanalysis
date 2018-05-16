@@ -213,3 +213,63 @@ def test_pulse_train():
     assert s2.items[2].items[1] == s1.items[2].items[1]
     assert s2.items[2].items[2] == s1.items[2].items[2]
     
+
+def test_offset():
+    stim = stimuli.Offset(start_time=1.0, amplitude=2.3)
+    t = stim.eval(t0=0, n_pts=1000, dt=0.01)
+    assert np.all(t.data[:100] == 0)
+    assert np.all(t.data[100:] == 2.3)
+
+
+def test_ramp():
+    stim = stimuli.Ramp(start_time=1.0, slope=2.3, duration=1.5, offset=0.5)
+    t = stim.eval(t0=0, n_pts=1000, dt=0.01)
+    test_data = np.zeros(1000)
+    test_data[100:250] = 0.5 + np.arange(150) * 2.3
+    assert np.all(t.data == test_data)
+
+
+def test_sine():
+    stim = stimuli.Sine(start_time=1.0, frequency=12.7, duration=1.5, amplitude=0.1, offset=0.5, phase=2.1)
+    t = stim.eval(t0=0, n_pts=1000, dt=0.01)
+    test_data = np.zeros(1000)
+    w = 2 * np.pi * 12.7 * np.arange(100,250)*0.01
+    test_data[100:250] = 0.5 + 0.1 * np.sin(w + 2.1 - w[0])
+    assert np.allclose(t.data, test_data)
+
+
+def test_chirp():
+    f0 = 13.5
+    f1 = f0 * 100
+    dur = 0.8
+    amp = 0.1
+    off = 0.5
+    ph = 2.1
+    stim = stimuli.Chirp(start_time=0.1, start_frequency=f0, end_frequency=f1, duration=dur, amplitude=amp, offset=off, phase=ph)
+    npts = 10000
+    dt = 0.0001
+    eval_data = stim.eval(t0=0, n_pts=npts, dt=dt).data
+    test_data = np.zeros(npts)
+
+    # sin[2 pi f(0) d (f(d) / f(0))^(t / d) / ln(f(d) / f(0)]
+    t = np.arange(8000) * dt
+    w = 2 * np.pi * f0 * dur * (f1/f0)**(t/dur) / np.log(f1/f0)
+    test_data[1000:9000] = off + amp * np.sin(w + ph - w[0])
+    assert np.allclose(eval_data, test_data)
+
+    # measure approximate frequency by interpolated zero-crossings
+    d = eval_data[1000:9000]-off
+    inds = np.where(np.diff(np.sign(d)))[0]
+    d0 = d[inds]
+    d1 = d[inds+1]
+    s = abs(d0) / abs(d1-d0)
+    zeros = (inds + s) * dt
+    freqs = 0.5 / np.diff(zeros)
+
+    # check endpoints
+    assert (abs(freqs[0] / f0) - 1.0) < 0.3
+    assert (abs(freqs[-1] / f1) - 1.0) < 0.1
+
+    # check center
+    ind = np.argwhere(zeros > 0.4)[0,0]
+    assert (abs(freqs[ind] / (f0*10)) - 1.0) < 0.1

@@ -280,7 +280,6 @@ class MiesRecording(PatchClampRecording):
         self._channels['primary'] = MiesTrace(self, 'primary')
         self._channels['command'] = MiesTrace(self, 'command')
 
-
     @property
     def stimulus(self):
         stim = self._meta.get('stimulus', None)
