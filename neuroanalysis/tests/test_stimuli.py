@@ -54,6 +54,7 @@ def test_square_pulse():
     test_data = np.zeros(1000)
     test_data[100:300] = 10
     assert np.all(sp1_data == test_data)
+    assert np.all((sp1_data != 0) == sp1.mask(time_values=sp1_eval.time_values).data)
 
     # test parent/child logic
     s1 = stimuli.Stimulus("stimulus 1")
@@ -157,6 +158,10 @@ def test_pulse_train():
     test_data[700:720] += 1
     assert np.all(s1_data == test_data)
 
+    test_mask = (s1_data != 0)
+    test_mask[100:400] = True
+    assert np.all(test_mask == s1.mask(n_pts=1000, dt=0.001).data)
+
     # test save/load
     state = s1.save()
     assert state == OrderedDict([
@@ -217,8 +222,10 @@ def test_pulse_train():
 def test_offset():
     stim = stimuli.Offset(start_time=1.0, amplitude=2.3)
     t = stim.eval(t0=0, n_pts=1000, dt=0.01)
-    assert np.all(t.data[:100] == 0)
-    assert np.all(t.data[100:] == 2.3)
+    test_data = np.zeros(1000)
+    test_data[100:] = 2.3
+    assert np.all(t.data == test_data)
+    assert np.all(stim.mask(time_values=t.time_values).data == (t.data != 0))
 
 
 def test_ramp():
@@ -227,6 +234,7 @@ def test_ramp():
     test_data = np.zeros(1000)
     test_data[100:250] = 0.5 + np.arange(150) * 2.3
     assert np.all(t.data == test_data)
+    assert np.all(stim.mask(time_values=t.time_values).data == (t.data != 0))
 
 
 def test_sine():
@@ -236,6 +244,7 @@ def test_sine():
     w = 2 * np.pi * 12.7 * np.arange(100,250)*0.01
     test_data[100:250] = 0.5 + 0.1 * np.sin(w + 2.1 - w[0])
     assert np.allclose(t.data, test_data)
+    assert np.all(stim.mask(time_values=t.time_values).data == (t.data != 0))
 
 
 def test_chirp():
@@ -249,6 +258,7 @@ def test_chirp():
     npts = 10000
     dt = 0.0001
     eval_data = stim.eval(t0=0, n_pts=npts, dt=dt).data
+    mask_data = stim.mask(t0=0, n_pts=npts, dt=dt).data
     test_data = np.zeros(npts)
 
     # sin[2 pi f(0) d (f(d) / f(0))^(t / d) / ln(f(d) / f(0)]
@@ -256,6 +266,7 @@ def test_chirp():
     w = 2 * np.pi * f0 * dur * (f1/f0)**(t/dur) / np.log(f1/f0)
     test_data[1000:9000] = off + amp * np.sin(w + ph - w[0])
     assert np.allclose(eval_data, test_data)
+    assert np.all(mask_data == (eval_data != 0))
 
     # measure approximate frequency by interpolated zero-crossings
     d = eval_data[1000:9000]-off
