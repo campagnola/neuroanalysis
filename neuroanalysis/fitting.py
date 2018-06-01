@@ -63,7 +63,7 @@ class FitModel(lmfit.Model):
         variable names.
         """
         if params is None:
-            params = {}
+            params = {}  #TODO: do no parameters mean the function won't call anything?
         p = self.make_params(**params)
         fit = lmfit.Model.fit(self, data, params=p, **kwds)
         if interactive:
@@ -93,31 +93,35 @@ class FitModel(lmfit.Model):
             http://lmfit.github.io/lmfit-py/constraints.html#constraints-chapter
         """
         p = lmfit.Parameters()
+
+        #NOTE: the order of parameters can affect fit.
         for k in self.param_names:
             p.add(k)
         
-        for param,val in params.items():
+        for param, val in params.items():
+            if not isinstance(val, tuple) or len(val)<2 or len(val)>3: 
+                raise TypeError("Tuple parameter specifications must be (val, 'fixed')"
+                                    " or (val, min, max).")
+            # functions can be used as parameters to be fit.  Add any parameters that are used for 
+            # these sorts of functions as they will not be i self.param_names
             if param not in p:
                 p.add(param)
-                
-            if isinstance(val, str):
-                p[param].expr = val
-            elif np.isscalar(val):
+
+            # specify the first value in the tuple as a expression or an initial condition    
+            if isinstance(val[0], str): #if the first item in the tuple is a string
+                p[param].expr = val[0]     #define it as an expression (which will be evaluated in the routine)
+            elif np.isscalar(val[0]):
                 p[param].value = val
-            elif isinstance(val, tuple):
-                if len(val) == 2:
-                    assert val[1] == 'fixed'
-                    p[param].value = val[0]
-                    p[param].vary = False
-                elif len(val) == 3:
-                    p[param].value = val[0]
-                    p[param].min = val[1]
-                    p[param].max = val[2]
-                else:
-                    raise TypeError("Tuple parameter specifications must be (val, 'fixed')"
-                                    " or (val, min, max).")
-            else:
-                raise TypeError("Invalid parameter specification: %r" % val)
+            # specify bounds depending on remaining values in tuple    
+            if len(val) == 2:
+                assert val[1] == 'fixed'
+                p[param].value = val[0]
+                p[param].vary = False
+            elif len(val) == 3:
+                p[param].value = val[0]
+                p[param].min = val[1]
+                p[param].max = val[2]
+
             
         # set initial values for parameters with mathematical constraints
         # this is to allow fit.eval(**fit.init_params)
@@ -235,22 +239,6 @@ class Psp(FitModel):
     This provides a flatter error surface to fit against, avoiding some of the
     tradeoff between parameters that Exp2 suffers from.
     """
-    # default guess / bounds:
-
-    # if guess is None:
-    #     guess = [
-    #         (y.max()-y.min()) * 2,
-    #         0, 
-    #         x[-1]*0.25,
-    #         x[-1]
-    #     ]
-    
-    # if bounds is None:
-    #     bounds = [[None,None]] * 4
-    #     bounds[1][0] = -2e-3
-    #     minTau = (x[1]-x[0]) * 0.5
-    #     #bounds[2] = [minTau, None]
-    #     #bounds[3] = [minTau, None]
 
     def __init__(self):
         FitModel.__init__(self, self.psp_func, independent_vars=['x'])
