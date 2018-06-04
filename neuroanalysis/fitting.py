@@ -63,7 +63,7 @@ class FitModel(lmfit.Model):
         variable names.
         """
         if params is None:
-            params = {}  #TODO: do no parameters mean the function won't call anything?
+            params = {}  
         p = self.make_params(**params)
         fit = lmfit.Model.fit(self, data, params=p, **kwds)
         if interactive:
