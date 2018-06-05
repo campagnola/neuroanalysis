@@ -245,6 +245,7 @@ class MiesRecording(PatchClampRecording):
         self._nwb = sweep._nwb
         self._trace_id = (sweep_id, ad_chan)
         self._inserted_test_pulse = None
+        self._nearest_test_pulse = None
         self._hdf_group = None
         self._da_chan = None
         headstage_id = int(self.hdf_group['electrode_name'].value[0].split('_')[1])
@@ -336,7 +337,7 @@ class MiesRecording(PatchClampRecording):
         if nearest is None:
             return None
 
-        return MiesTestPulse(nearest, self)
+        self._nearest_test_pulse = MiesTestPulse(nearest, self)
 
     @property
     def has_inserted_test_pulse(self):
@@ -416,13 +417,14 @@ class MiesRecording(PatchClampRecording):
 class MiesTestPulse(PatchClampTestPulse):
     def __init__(self, entry, rec):
         chan = rec.device_id
-        clamp_mode = 'vc' if np.isnan(entry['TP Baseline Vm']) else 'ic'
         self._nb_entry = {}
         for k,v in entry.items():
             if isinstance(v, np.ndarray):
                 self._nb_entry[k] = v[chan]
             else:
                 self._nb_entry[k] = v
+
+        clamp_mode = 'vc' if np.isnan(self._nb_entry['TP Baseline Vm']) else 'ic'
         
         PatchClampRecording.__init__(self,
             device_type=rec.device_type, 
@@ -444,7 +446,7 @@ class MiesTestPulse(PatchClampTestPulse):
         current clamp mode.
         """
         if self.clamp_mode == 'vc':
-            return self.entry['TP Peak Resistance']
+            return self._nb_entry['TP Peak Resistance'] * 1e6
         else:
             return None
         
@@ -452,7 +454,7 @@ class MiesTestPulse(PatchClampTestPulse):
     def input_resistance(self):
         """The input resistance measured from this test pulse.
         """
-        return self.entry['TP Steady State Resistance']
+        return self._nb_entry['TP Steady State Resistance'] * 1e6
     
     @property
     def capacitance(self):
@@ -472,7 +474,7 @@ class MiesTestPulse(PatchClampTestPulse):
         the onset of the test pulse.
         """
         if self.clamp_mode == 'ic':
-            return self.entry['TP Baseline Vm'] * 1e-3
+            return self._nb_entry['TP Baseline Vm'] * 1e-3
         else:
             return None  # how do we get the holding potential??
  
@@ -482,7 +484,7 @@ class MiesTestPulse(PatchClampTestPulse):
         test pulse.
         """
         if self.clamp_mode == 'vc':
-            return self.entry['TP Baseline pA'] * 1e-12
+            return self._nb_entry['TP Baseline pA'] * 1e-12
         else:
             return None  # how do we get the holding current??
     
