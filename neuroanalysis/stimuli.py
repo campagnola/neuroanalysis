@@ -226,6 +226,9 @@ class Stimulus(object):
                 return False
         return True
 
+    def __ne__(self, other):
+        return not (self == other)
+
     def save(self):
         """Return a serializable representation of this Stimulus and its children.
         """
