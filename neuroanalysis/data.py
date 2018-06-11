@@ -729,7 +729,9 @@ class Trace(Container):
     
     @t0.setter
     def t0(self, t0):
-        if self.has_time_values and self._time_values[0] != t0:
+        if self.t0 == t0:
+            return
+        if self.has_time_values:
             self._time_values = self._time_values + (t0 - self._time_values[0])
         else:
             self._meta['t0'] = t0
@@ -854,7 +856,7 @@ class Trace(Container):
             tvals = self.time_values
             dt = np.diff(tvals)
             avg_dt = dt.mean()
-            self._regularly_sampled = np.all(np.abs(dt - avg_dt) < (avg_dt * 0.01))
+            self._regularly_sampled = bool(np.all(np.abs(dt - avg_dt) < (avg_dt * 0.01)))
         return self._regularly_sampled
 
     @property
@@ -1137,23 +1139,22 @@ class TraceView(Trace):
         data = trace.data[sl]
         meta = trace.meta.copy()
         if trace.has_time_values:
-            meta['time_values'] = trace.time_values[sl]
+            meta['time_values'] = trace.time_values[sl].copy()
         elif trace.has_timing:
             meta['t0'] = trace.time_at(inds[0])
-            
         Trace.__init__(self, data, recording=trace.recording, **meta)
+    
+    # @property
+    # def time_values(self):
+    #     return self._parent_trace.time_values[self._view_slice]
 
-    @property
-    def time_values(self):
-        return self._parent_trace.time_values[self._view_slice]
+    # def time_at(self, index):
+    #     if not np.isscalar(index):
+    #         index = np.asarray(index)
+    #     return self._parent_trace.time_at(index + self._view_indices[0])
 
-    def time_at(self, index):
-        if not np.isscalar(index):
-            index = np.asarray(index)
-        return self._parent_trace.time_at(index + self._view_indices[0])
-
-    def index_at(self, t):
-        return self._parent_trace.index_at(t) - self._view_indices[0]
+    # def index_at(self, t):
+    #     return self._parent_trace.index_at(t) - self._view_indices[0]
 
     @property
     def parent(self):

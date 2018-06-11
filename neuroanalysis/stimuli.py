@@ -353,6 +353,8 @@ def find_square_pulses(trace, baseline=None):
         "no pulse". If no baseline is specified, then the first sample of
         *trace* is used.
     """
+    if not isinstance(trace, Trace):
+        raise TypeError("argument must be Trace instance")
     if baseline is None:
         baseline = trace.data[0]
     sdiff = np.diff(trace.data)
