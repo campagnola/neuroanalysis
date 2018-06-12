@@ -161,6 +161,10 @@ class Exp(FitModel):
     def exp(x, xoffset, yoffset, amp, tau):
         return yoffset + amp * np.exp(-(x - xoffset)/tau)
 
+    def fit(self, *args, **kwds):
+        kwds.setdefault('method', 'nelder')
+        return FitModel.fit(self, *args, **kwds)
+
 
 class Exp2(FitModel):
     """Double exponential fitting model.

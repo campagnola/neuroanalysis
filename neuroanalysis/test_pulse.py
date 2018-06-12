@@ -144,7 +144,7 @@ class PatchClampTestPulse(PatchClampRecording):
                 'tau': (10e-3, 1e-3, 50e-3),
             }
             
-        fit_kws = {'xtol': 1e-4, 'maxfev': 1000}
+        fit_kws = {'tol': 1e-4}
         model = Exp()
         
         # ignore initial transients when fitting
