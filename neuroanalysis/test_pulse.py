@@ -103,11 +103,12 @@ class PatchClampTestPulse(PatchClampRecording):
         # adapted from ACQ4
         
         meta = self.meta
-        pulse_start, pulse_stop = meta['pulse_edges']
-        pulse_amp = meta['pulse_amplitude']
+        pulse_amp = self.stimulus.amplitude
         clamp_mode = self.clamp_mode
         
         data = self['primary']
+        pulse_start = data.index_at(self.stimulus.start_time)
+        pulse_stop = data.index_at(self.stimulus.start_time + self.stimulus.duration)
         dt = data.dt
         
         # Extract specific time segments
@@ -128,8 +129,8 @@ class PatchClampTestPulse(PatchClampRecording):
             iri = pulse_amp / input_r
             params = {
                 'xoffset': (pulse.t0, 'fixed'),
-                'yoffset': base_median + iri, 
-                'amp': ari - iri, 
+                'yoffset': base_median + iri,
+                'amp': ari - iri,
                 'tau': (1e-3, 0.1e-3, 50e-3),
             }
         else:
@@ -137,13 +138,13 @@ class PatchClampTestPulse(PatchClampRecording):
             arv = pulse_amp * (access_r - bridge)
             irv = pulse_amp * input_r
             params = {
-                'xoffset': pulse.t0, 
-                'yoffset': base_median+arv+irv, 
-                'amp': -irv, 
+                'xoffset': pulse.t0,
+                'yoffset': base_median+arv+irv,
+                'amp': -irv,
                 'tau': (10e-3, 1e-3, 50e-3),
             }
             
-        fit_kws = {'xtol': 1e-4, 'maxfev': 1000, 'nan_policy': 'omit'}
+        fit_kws = {'xtol': 1e-4, 'maxfev': 1000}
         model = Exp()
         
         # ignore initial transients when fitting
