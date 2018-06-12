@@ -155,7 +155,7 @@ class Exp(FitModel):
     Parameters are xoffset, yoffset, amp, and tau.
     """
     def __init__(self):
-        FitModel.__init__(self, self.exp, independent_vars=['x'])
+        FitModel.__init__(self, self.exp, independent_vars=['x'], nan_policy='omit', method='nelder')
 
     @staticmethod
     def exp(x, xoffset, yoffset, amp, tau):
