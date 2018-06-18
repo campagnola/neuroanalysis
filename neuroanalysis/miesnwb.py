@@ -6,6 +6,7 @@ import h5py
 
 from .data import Experiment, SyncRecording, PatchClampRecording, Trace
 from .test_pulse import PatchClampTestPulse
+from . import stimuli
 
 
 class MiesNwb(Experiment):
@@ -254,7 +255,6 @@ class MiesRecording(PatchClampRecording):
 
         # update metadata
         nb = self._nwb.notebook()[int(self._trace_id[0])][headstage_id]
-        self._meta['stim_name'] = self.hdf_group['stimulus_description'].value[0]
         self.meta['holding_potential'] = (
             None if nb['V-Clamp Holding Level'] is None
             else nb['V-Clamp Holding Level'] * 1e-3
@@ -280,7 +280,18 @@ class MiesRecording(PatchClampRecording):
 
         self._channels['primary'] = MiesTrace(self, 'primary')
         self._channels['command'] = MiesTrace(self, 'command')
-    
+
+    @property
+    def stimulus(self):
+        stim = self._meta.get('stimulus', None)
+        if stim is None:
+            stim_name = self.hdf_group['stimulus_description'].value[0]
+            stim = stimuli.Stimulus(description=stim_name)
+            if self.has_inserted_test_pulse:
+                stim.append_item(self.inserted_test_pulse.stimulus)
+            self._meta['stimulus'] = stim
+        return stim
+
     @property
     def hdf_group(self):
         if self._hdf_group is None:
@@ -355,8 +366,7 @@ class MiesRecording(PatchClampRecording):
                 amp = self.meta['notebook']['TP Amplitude VC'] * 1e-3
             else:
                 amp = self.meta['notebook']['TP Amplitude IC'] * 1e-12
-            tp._meta['mies_pulse_amplitude'] = amp
-            
+
             self._inserted_test_pulse = tp
         return self._inserted_test_pulse
 
@@ -394,7 +404,9 @@ class MiesRecording(PatchClampRecording):
         return self._da_chan
 
     def _descr(self):
-        return "%s %s.%s stim=%s" % (PatchClampRecording._descr(self), self._trace_id[0], self.device_id, self._meta['stim_name'])
+        stim = self.stimulus
+        stim_name = '' if stim is None else stim.description
+        return "%s %s.%s stim=%s" % (PatchClampRecording._descr(self), self._trace_id[0], self.device_id, stim_name)
 
     def __getstate__(self):
         state = self.__dict__.copy()
