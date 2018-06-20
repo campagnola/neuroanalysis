@@ -428,12 +428,11 @@ def fit_psp(response,
             weight='default',
             amp_ratio='default', 
             # the following are parameters that can be fit 
-                amp='default',
-                decay_tau='default',
-                rise_power='default',
-                rise_time='default',
-                exp_amp='default',
-                yoffset='default',
+            amp='default',
+            decay_tau='default',
+            rise_power='default',
+            rise_time='default',
+            yoffset='default',
             ):
     """Fit psp waveform to the equation specified in the PSP class in neuroanalysis.fitting
 
@@ -458,9 +457,6 @@ def fit_psp(response,
         which assumes the region of the waveform before the event is at baseline.
     fit_kws : dictionary
         Additional key words that are fed to lmfit
-    exp_amp : string
-        Function that is passed to lmfit. Note this is not the entire function 
-        being fit by this code.
     The parameters below are fed to the psp function. Each value in the 
         key:value dictionary pair must be a tuple.
         In general the structure of the tuple is of the form, 
@@ -499,8 +495,8 @@ def fit_psp(response,
     """           
     
     # extracting these for ease of use
-    t=response.time_values
-    y=response.data
+    t = response.time_values
+    y = response.data
     dt = response.dt
     
     # set initial conditions depending on whether in voltage or current clamp
@@ -524,7 +520,7 @@ def fit_psp(response,
         amps = (-amp_init, -amp_max, 0)
     elif sign == '+':
         amps = (amp_init, 0, amp_max)
-    elif sign =='any':
+    elif sign == 'any':
         warnings.warn("You are not specifying the predicted sign of your psp.  This may slow down or mess up fitting")
         amps = (0, -amp_max, amp_max)
     else:
@@ -555,8 +551,8 @@ def fit_psp(response,
     
     # override defaults with input
     for bp in base_params.keys():
-        if eval(bp)!='default':
-            base_params[bp]=eval(bp)
+        if eval(bp) != 'default':
+            base_params[bp] = eval(bp)
     
     # set weighting that 
     if weight == 'default': #use default weighting
@@ -566,10 +562,10 @@ def fit_psp(response,
             raise Exception('the weight and array vectors are not the same length') 
     
     # arguement to be passed through to fitting function
-    fit_kws={'weights': weight}   
+    fit_kws = {'weights': weight}   
 
     # convert initial parameters into a list of dictionaries to be consumed by psp.fit()        
-    param_dict_list= create_all_fit_param_combos(base_params)
+    param_dict_list = create_all_fit_param_combos(base_params)
 
     # cycle though different parameters sets and chose best one
     best_fit = None
