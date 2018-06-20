@@ -5,19 +5,9 @@ import matplotlib.pyplot as plt
 import numpy
 import lmfit
 
-initial_params = {
-            'Tau_f':100.0, 'Tau_FDR':300.0,
-            'a_FDR':0.001, 'Tau_i':1000.0, 'a_i':0.1, 'Tau_D':30.0,
-            'a_D':0.1, 'Tau_r0':300.0, 'p0bar':0.1, 'Tau_r':100.0,'p0':0.1
-        }
+
         
 
-bound_params={
-            'Tau_f':(0.0,5000.0), 
-            'Tau_FDR':(0.0,1000.), 'a_FDR':(0.0,1000.0), 'Tau_i':(0.,5000.0),'a_i':(-10.0,10.0),
-            'Tau_D':(1.0, 100.0), 'a_D': (.0, 10.0), 'Tau_r0':(0.0, 3000.0), 
-            'p0bar':(0.0, 1.0),'Tau_r':(0.0,5000.0),'p0':(0.,1.0)
-        }
 param_order = [
             'Tau_r0', 'a_FDR', 'Tau_FDR', 'Tau_f', 'p0bar', 
             'a_i', 'Tau_i', 'a_D', 'Tau_D', 'Tau_r', 'p0'
@@ -31,6 +21,24 @@ dynamics_types = ['Dep', 'Fac', 'UR', 'SMR', 'DSR']
 
 
 def f(y, t, all_dict,gating):
+    """ Calculate derivatives of state variables between spikes. 
+        
+    Parameters
+    ----------
+    y : array
+        state variables of synapses 
+    t : float
+        time
+    all_dict : dictionary
+        parameters necessary to calculate derivatives of states
+    gating: dictionary
+        specify state variables necessary to be calculated. 
+        
+    Returns
+    -------
+    derivs : array
+       Derivatives of state variables. 
+    """
     # unpack params
     #a_n, Tau_r0, a_FDR, Tau_FDR, a_f, Tau_f, p0bar, a_i, Tau_i, a_D, Tau_D, blah = params
     n, p, Tau_r, p0, D = y      # unpack current values of y
@@ -57,7 +65,7 @@ def f(y, t, all_dict,gating):
         derivs[2] = (all_dict['Tau_r0']-Tau_r) /all_dict['Tau_FDR']
 
     if gating['SMR']==1:
-        derivs[3] = -(all_dict['p0bar']-p0) /all_dict['Tau_i']
+        derivs[3] = (all_dict['p0bar']-p0) /all_dict['Tau_i']
 
     if gating['DSR']==1:
         derivs[4] = (1-D) /all_dict['Tau_D']
@@ -70,19 +78,20 @@ def feval(spikes, length_array, dynamics,ode_variables, Tau_r0, a_FDR, Tau_FDR, 
         
     Parameters
     ----------
-    spike_times : list
-        Times at which presynaptic spikes occur
-    params : list
-        Model parameters
-    dt : float
-        Time step (in ms) for integration between evaluated timepoints
-        
+    spikes : list
+        Times of presyanptic spikes
+    length_array : list
+        Length of each sweep, which is necessary to reconstruct the fitting results into the origial form of the experiments
+    dynamics : array
+        Five flags to specify which state variables are necessary to be estimated; each flag determines if the corresponding state needs to be calculated.
+    ode_variables:array
+        Order of state variables, which are necessary to pass them as a vector (without keywords)
+    Tau_r0, a_FDR, Tau_FDR, p0, Tau_f, p0bar, a_i, Tau_i, a_D, Tau_D, Tau_r: floats
+        Values of parameters. 
     Returns
     -------
     output : array
-        Array having shape (n_spikes, 7), where the rows are the model
-        state parameters for each timepoint, and the columns are (time,
-        amplitude (=n*p*D), n, p, tau_r, p0, D).
+        PSPs estimated for spike times.  
     """
   
     #print spikes
@@ -128,12 +137,14 @@ def feval(spikes, length_array, dynamics,ode_variables, Tau_r0, a_FDR, Tau_FDR, 
         spike_times=numpy.array(ex)
         y=numpy.ones(5)
         y[1]=param_dict['p0']
-        p0_initial=y[1]
+        #p0_initial=y[1]
         if ode_vs['Tau_r']==1:
             y[2]=param_dict['Tau_r0'] # initial value
         if ode_vs['p0']==1:
             y[3]=param_dict['p0bar']  # intial value
-		      
+            y[1]=y[3]
+        
+    
         
         nspikes = len(spike_times)
         #print nspikes
@@ -146,8 +157,20 @@ def feval(spikes, length_array, dynamics,ode_variables, Tau_r0, a_FDR, Tau_FDR, 
         # Loop over spikes and evaluation timepoints
         # Each spike causes an instantaneous change in state parameters,
         # and then we integrate the ode until the next spike.
-        for i in range(1, nspikes):
-            # Instantaneous changes in state induced by spike
+        for i in range(0, nspikes):
+            if i!=0:
+                # Integrate until next spike
+           
+                # Instantaneous changes in state induced by spike
+                time_pts = numpy.arange(spike_times[i-1], spike_times[i], dt) + dt
+                #print time_pts
+                psoln = odeint(f, y, time_pts, args=(param_dict,gating))
+                # Last time point becomes the initial state for the next spike
+                y = psoln[-1]
+                # Record state for this timepoint
+                output[i, 0] = time_pts[-1]
+                output[i, 2:] = psoln[-1]  
+
             yp = y[:]
             y01 = y[0]*y[1]
            
@@ -159,7 +182,10 @@ def feval(spikes, length_array, dynamics,ode_variables, Tau_r0, a_FDR, Tau_FDR, 
                 
 		        
             if gating['Fac']==1:
-                yp[1] +=param_dict['p0']*(1-y[1])
+                if gating['SMR']==1:
+                    yp[1] +=yp[3]*(1-y[1])
+                else:
+                    yp[1] +=param_dict['p0']*(1-y[1])
 		        
             if gating['UR']==1:
                 yp[2] -= param_dict['a_FDR'] * y[2]
@@ -171,22 +197,16 @@ def feval(spikes, length_array, dynamics,ode_variables, Tau_r0, a_FDR, Tau_FDR, 
                 yp[4] -=param_dict['a_D'] * y01 * y[4]
                 
             y = yp[:]
-     
-            # Integrate until next spike
-            time_pts = numpy.arange(spike_times[i-1], spike_times[i], dt) + dt
-            #print time_pts
-            psoln = odeint(f, y, time_pts, args=(param_dict,gating))
-               
-            # Last time point becomes the initial state for the next spike
-            y = psoln[-1]
+            if i==0:
+                initial_w=y[0]*y[1]*y[4]  
+
+              
      
             
-            yw[i,0]=y[0]*y[1]/p0_initial*y[4]
+            yw[i,0]=y[0]*y[1]*y[4]/initial_w
             #print y[1],yw[1],p0_initial
             #print y    
-            # Record state for this timepoint
-            output[i, 0] = time_pts[-1]
-            output[i, 2:] = psoln[-1]  
+
             #Generate n*p*D column
         output[:, 1] = yw[:,0]
         return_v.extend(output[:, 1])
@@ -205,23 +225,23 @@ class ReleaseModel(object):
     Jung Hoon Lee <jungl@alleninstitute.org>
     
     """
-    Dynamics = {'Dep':1, 'Fac':1, 'UR':1, 'SMR':1, 'DSR':1}
+  
     ode_variables={'n':1,'p':1,'Tau_r':1,'p0':1,'D':1}
-    def __init__(self):
+    def __init__(self,Dynamics,initial_params,bound_params):
         # Dep: depression
         # Fac: facilitation
         # UR: Use-dependent replentishment
         # SMR: Slow modulation of release
         # DSR: Receptor desensitization
        
-        
+        self.Dynamics=Dynamics
         self.dict_params =initial_params
         
         self.order =param_order
        
         self.dict_bounds=bound_params
        
-        print self.order
+
 
     def run_fit(self, spike_sets):
         """Fit the model against data.
@@ -242,6 +262,7 @@ class ReleaseModel(object):
             #self.data_e.extend(dataz)
             lengths.append(len(datax))
         print self.Dynamics
+       
 
         params=lmfit.Parameters()
         self.Sel_gatings=[]
@@ -256,7 +277,7 @@ class ReleaseModel(object):
                 self.Sel_gatings.append('Tau_r')
                 
         else:
-            self.ode_variables['n']=0
+            self.ode_variables['n']=0 #it must not be used since all stp is dependent on the depletion model. 
 
         if self.Dynamics['Fac']==1:
             #self.Sel_gatings.append('a_f')            
@@ -317,7 +338,8 @@ class ReleaseModel(object):
         print pars
         result = fitmodel.fit(numpy.array(self.data_y),spikes=numpy.array(self.data_x),length_array=lengths,dynamics=dynamics_vec,ode_variables=ode_variables_vec)
         print(result.fit_report())
-        
+        #ci=lmfit.conf_interval(fitmodel,result)
+        #lmfit.printfunc.report_ci(ci) 
         self.model_y=result.eval()
         model_ys=[]
         ct=0
@@ -328,6 +350,14 @@ class ReleaseModel(object):
         return model_ys,result
 
     def goodness_of_fit(self):
+        """ Calculate derivatives of state variables between spikes. 
+        
+        
+            Returns
+            -------
+            derivs : array
+            r^2, adj. r^2 
+       """
         data_mean=numpy.mean(self.data_y)
         ss_t=0
         ss_res=0
@@ -337,8 +367,8 @@ class ReleaseModel(object):
             ss_t=ss_t+(xin-data_mean)**2
             ss_res=ss_res+(xin-self.model_y[xi])**2
         r_square=1-float(ss_res)/float(ss_t)
-        adj_r_square=r_square-(1-r_square)*p/(n-p-1)
+        adj_r_square=1-(1-r_square)*(n-1)/(n-p-1)
         R_s=numpy.array([r_square,adj_r_square])
-        print R_s
+        return R_s
 
     
