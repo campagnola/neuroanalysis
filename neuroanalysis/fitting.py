@@ -452,12 +452,13 @@ def fit_psp(response,
         Note that if an input for *rise_time* is provided this input
         will be irrelevant.
     stacked : True or False
-        If true, use the StackedPsp function which assumes there is still left
-        over voltage decay from previous events.  If False, use Psp function
-        which assumes the region of the waveform before the event is at baseline.
+        If True, use the :class:`StackedPsp` model function. This model fits
+        the PSP shape on top of a baseline exponential decay, which is useful when the
+        PSP follows close after another PSP or action potential.
+        See *amp_ratio* to bound the amplitude of the baseline exponential.
     weight : numpy array, size equal to data waveform, default: np.ones(len(response.data))
         assigns relative weights to each data point in waveform for fitting.
-    fit_kws : dictionary
+    fit_kws : dict
         Additional key words that are fed to lmfit
     The parameters below are fed to the psp function. Each value in the 
         key:value dictionary pair must be a tuple.
@@ -473,23 +474,26 @@ def fit_psp(response,
             amplitude=(10, 'fixed')
             amplitude=([5,10, 20], 0, 20)
             amplitude=([5,10, 20], 'fixed') 
-        xoffset : no default; example (14e-3, -float('inf'), float('int'))
-            Where psp begins in reference to the start of the data (positive shifts to the right).
+        xoffset : tuple
+            Time where psp begins in reference to the start of *response*.
             Note that this parameter must be specified by user.
-        yoffset : default: (0, -float('inf'), float('inf')
+            Example: ``(14e-3, -float('inf'), float('int'))``
+        yoffset : tuple
             Vertical offset of rest.  Note that default of zero assumes rest has been subtracted from traces.
-        rise_time : default dependent on clamp_mode
-            Time from beginning of psp until peak
-        decay_tau : default dependent on clamp_mode
-            Decay time constant
-        amp : default dependent on clamp_mode
-            The peak value of the psp
-        rise_power : default (2, 'fixed')
-            Exponent for the rising phase; larger values result in a slower activation 
-        amp_ratio : default (0, -100, 100)
-            Used to set up the ratio between the residual decay amplitude 
-            (left over from other previous psps) and the height of the PSP 
-            when "stacked" set to True.
+            Default is ``(0, -float('inf'), float('inf')``.
+        rise_time : tuple
+            Time from beginning of psp until peak. Default initial condition is 5 ms for current clamp
+            or 1 ms for voltage clamp. Default bounds are calculated using *rise_time_mult_factor*.
+        decay_tau : tuple
+            Decay time constant. Default initial condition is 50 ms for current clamp
+            or 4 ms for voltage clamp. Default bounds are from 0.1 to 10 times the initial value.
+        rise_power : tuple
+            Exponent for the rising phase; larger values result in a slower activation. Default is
+            ``(2.0, 'fixed')``.
+        amp_ratio : tuple
+            Ratio of the amplitude of the baseline exponential decay to the amplitude of the PSP.
+            This parameter is used when *stacked* is True in order to bound the amplitude of the
+            baseline exponential.
     
     Returns
     -------
