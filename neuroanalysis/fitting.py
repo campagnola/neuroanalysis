@@ -557,7 +557,7 @@ def fit_psp(response,
         psp = Psp()
     
     # set weighting that 
-    if weight == 'default': #use default weighting
+    if weight is None: #use default weighting
         weight = np.ones(len(y))
     else:  #works if there is a value specified in weight
         if len(weight) != len(y):
