@@ -524,12 +524,12 @@ def fit_psp(response,
 
     # Set up amplitude initial values and boundaries depending on whether *sign* are positive or negative
     if sign == '-':
-        amps = (-amp_init, -amp_max, 0)
+        amp_default = (-amp_init, -amp_max, 0)
     elif sign == '+':
-        amps = (amp_init, 0, amp_max)
+        amp_default = (amp_init, 0, amp_max)
     elif sign == 'any':
         warnings.warn("You are not specifying the predicted sign of your psp.  This may slow down or mess up fitting")
-        amps = (0, -amp_max, amp_max)
+        amp_default = (0, -amp_max, amp_max)
     else:
         raise ValueError('sign must be "+", "-", or "any"')
         
@@ -540,7 +540,7 @@ def fit_psp(response,
         'rise_time': rise_time or (rise_time_init, rise_time_init/rise_time_mult_factor, rise_time_init*rise_time_mult_factor),
         'decay_tau': decay_tau or (decay_tau_init, decay_tau_init/10., decay_tau_init*10.),
         'rise_power': rise_power or (2, 'fixed'),
-        'amp': amp or amps  #note that the function call has a different name so that override internal defaults
+        'amp': amp or amp_default,
     }
     
     # specify fitting function and set up conditions
