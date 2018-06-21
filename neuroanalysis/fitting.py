@@ -419,20 +419,20 @@ def create_all_fit_param_combos(base_params):
 
 def fit_psp(response, 
             xoffset, # this parameter will be fit.
-            mode='ic', 
+            clamp_mode='ic', 
             sign='any', #Note this will not be used if *amp* input is specified
             method='leastsq', 
             fit_kws=None, 
             stacked=True,
             rise_time_mult_factor=10., #Note this will not be used if *rise_time* input is specified 
-            weight='default',
-            amp_ratio='default', 
+            weight=None,
+            amp_ratio=None, 
             # the following are parameters that can be fit 
-            amp='default',
-            decay_tau='default',
-            rise_power='default',
-            rise_time='default',
-            yoffset='default',
+            amp=None,
+            decay_tau=None,
+            rise_power=None,
+            rise_time=None,
+            yoffset=None
             ):
     """Fit psp waveform to the equation specified in the PSP class in neuroanalysis.fitting
 
@@ -440,7 +440,7 @@ def fit_psp(response,
     ----------
     response : neuroanalysis.data.Trace class
         Contains data on trace waveform.
-    mode : string
+    clamp_mode : string
         either 'ic' for current clamp or 'vc' for voltage clamp
     sign : string
         Specifies the sign of the PSP deflection.  Must be '+', '-', or any. If *amp* 
@@ -455,6 +455,8 @@ def fit_psp(response,
         If true, use the StackedPsp function which assumes there is still left
         over voltage decay from previous events.  If False, use Psp function
         which assumes the region of the waveform before the event is at baseline.
+    weight : numpy array, size equal to data waveform, default: np.ones(len(response.data))
+        assigns relative weights to each data point in waveform for fitting.
     fit_kws : dictionary
         Additional key words that are fed to lmfit
     The parameters below are fed to the psp function. Each value in the 
@@ -464,33 +466,34 @@ def fit_psp(response,
         The initial conditions can be either a number or a list 
         of numbers specifying several initial conditions.  The 
         initial condition may also be fixed by replacing the lower 
-        higher boundary combination with 'fixed'.    
+        higher boundary combination with 'fixed'. If nothing is 
+        supplied defaults will be used.    
         Examples:    
             amplitude=(10, 0, 20)
             amplitude=(10, 'fixed')
             amplitude=([5,10, 20], 0, 20)
             amplitude=([5,10, 20], 'fixed') 
-        xoffset : scalar
+        xoffset : no default; example (14e-3, -float('inf'), float('int'))
             Where psp begins in reference to the start of the data (positive shifts to the right).
-            Note that this paramter must be specified by user.
-        yoffset : scalar
+            Note that this parameter must be specified by user.
+        yoffset : default: (0, -float('inf'), float('inf')
             Vertical offset of rest.  Note that default of zero assumes rest has been subtracted from traces.
-        rise_time : scalar
+        rise_time : default dependent on clamp_mode
             Time from beginning of psp until peak
-        decay_tau : scalar
+        decay_tau : default dependent on clamp_mode
             Decay time constant
-        amp : scalar
+        amp : default dependent on clamp_mode
             The peak value of the psp
-        rise_power : scalar
+        rise_power : default (2, 'fixed')
             Exponent for the rising phase; larger values result in a slower activation 
-        amp_ratio : scalar 
-            if *stacked* this is used to set up the ratio between the 
-            residual decay amplitude (left over from other previous psps)
-            and the height of the PSP.
+        amp_ratio : default (0, -100, 100)
+            Used to set up the ratio between the residual decay amplitude 
+            (left over from other previous psps) and the height of the PSP 
+            when "stacked" set to True.
     
     Returns
     -------
-    fit: lmfit.model.ModelResult
+    fit : lmfit.model.ModelResult
         Best fit
     """           
     
@@ -502,18 +505,18 @@ def fit_psp(response,
     # set initial conditions depending on whether in voltage or current clamp
     # note that sign of these will automatically be set later on based on the 
     # the *sign* input
-    if mode == 'ic':
+    if clamp_mode == 'ic':
         amp_init = .2e-3
         amp_max = 100e-3
         rise_time_init = 5e-3
         decay_tau_init = 50e-3
-    elif mode == 'vc':
+    elif clamp_mode == 'vc':
         amp_init = 20e-12
         amp_max = 500e-12
         rise_time_init = 1e-3
         decay_tau_init = 4e-3
     else:
-        raise ValueError('mode must be "ic" or "vc"')
+        raise ValueError('clamp_mode must be "ic" or "vc"')
 
     # Set up amplitude initial values and boundaries depending on whether *sign* are positive or negative
     if sign == '-':
@@ -529,11 +532,11 @@ def fit_psp(response,
     # initial condition, lower boundry, upper boundry    
     base_params = {
         'xoffset': xoffset,
-        'yoffset': (0, -float('inf'), float('inf')),
-        'rise_time': (rise_time_init, rise_time_init/rise_time_mult_factor, rise_time_init*rise_time_mult_factor),
-        'decay_tau': (decay_tau_init, decay_tau_init/10., decay_tau_init*10.),
-        'rise_power': (2, 'fixed'),
-        'amp': amps
+        'yoffset': yoffset or (0, -float('inf'), float('inf')),
+        'rise_time': rise_time or (rise_time_init, rise_time_init/rise_time_mult_factor, rise_time_init*rise_time_mult_factor),
+        'decay_tau': decay_tau or (decay_tau_init, decay_tau_init/10., decay_tau_init*10.),
+        'rise_power': rise_power or (2, 'fixed'),
+        'amp': amp or amps  #note that the function call has a different name so that override internal defaults
     }
     
     # specify fitting function and set up conditions
@@ -543,16 +546,11 @@ def fit_psp(response,
         psp = StackedPsp()
         base_params.update({
             #TODO: figure out the bounds on these
+            'amp_ratio': amp_ratio or (0, -100, 100),
             'exp_amp': 'amp * amp_ratio',
-            'amp_ratio': (0, -100, 100),
         })  
     else:
         psp = Psp()
-    
-    # override defaults with input
-    for bp in base_params.keys():
-        if eval(bp) != 'default':
-            base_params[bp] = eval(bp)
     
     # set weighting that 
     if weight == 'default': #use default weighting
