@@ -233,6 +233,8 @@ class MiesTrace(Trace):
                 # command values are stored _without_ holding, so we add
                 # that back in here.
                 offset = rec.holding_potential if rec.clamp_mode == 'vc' else rec.holding_current
+                if offset is None:
+                    raise Exception("Holding value unknown for this recording; cannot generate command data.")
                 self._data = (np.array(rec.command_hdf) * scale) + offset
         return self._data
     
