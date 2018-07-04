@@ -155,11 +155,15 @@ class Exp(FitModel):
     Parameters are xoffset, yoffset, amp, and tau.
     """
     def __init__(self):
-        FitModel.__init__(self, self.exp, independent_vars=['x'])
+        FitModel.__init__(self, self.exp, independent_vars=['x'], nan_policy='omit', method='nelder')
 
     @staticmethod
     def exp(x, xoffset, yoffset, amp, tau):
         return yoffset + amp * np.exp(-(x - xoffset)/tau)
+
+    def fit(self, *args, **kwds):
+        kwds.setdefault('method', 'nelder')
+        return FitModel.fit(self, *args, **kwds)
 
 
 class Exp2(FitModel):
