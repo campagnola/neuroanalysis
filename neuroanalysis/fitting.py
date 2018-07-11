@@ -111,8 +111,8 @@ class FitModel(lmfit.Model):
                     p[param].vary = False
                 elif len(val) == 3:
                     p[param].value = val[0]
-                    p[param].min = val[1]
-                    p[param].max = val[2]
+                    p[param].min = val[1] if val[1] is not None else -float('inf')
+                    p[param].max = val[2] if val[2] is not None else float('inf')
                 else:
                     raise TypeError("Tuple parameter specifications must be (val, 'fixed')"
                                     " or (val, min, max).")
