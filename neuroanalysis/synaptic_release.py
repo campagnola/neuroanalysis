@@ -1,7 +1,6 @@
 from collections import OrderedDict
 import scipy.optimize as scimin
 from scipy.integrate import odeint
-import matplotlib.pyplot as plt
 import numpy
 import lmfit
 
@@ -159,11 +158,11 @@ def feval(spikes, length_array, dynamics,ode_variables, Tau_r0, a_FDR, Tau_FDR, 
         # and then we integrate the ode until the next spike.
         for i in range(0, nspikes):
             if i!=0:
-                # Integrate until next spike
+                
            
                 # Instantaneous changes in state induced by spike
                 time_pts = numpy.arange(spike_times[i-1], spike_times[i], dt) + dt
-                #print time_pts
+                # Integrate until next spike
                 psoln = odeint(f, y, time_pts, args=(param_dict,gating))
                 # Last time point becomes the initial state for the next spike
                 y = psoln[-1]
@@ -226,14 +225,14 @@ class ReleaseModel(object):
     
     """
   
-    ode_variables={'n':1,'p':1,'Tau_r':1,'p0':1,'D':1}
+   
     def __init__(self,Dynamics,initial_params,bound_params):
         # Dep: depression
         # Fac: facilitation
         # UR: Use-dependent replentishment
         # SMR: Slow modulation of release
         # DSR: Receptor desensitization
-       
+        self.ode_variable=={'n':1,'p':1,'Tau_r':1,'p0':1,'D':1}
         self.Dynamics=Dynamics
         self.dict_params =initial_params
         
