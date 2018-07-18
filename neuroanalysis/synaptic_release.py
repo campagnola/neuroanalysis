@@ -83,7 +83,7 @@ def feval(spikes, length_array, dynamics,ode_variables, Tau_r0, a_FDR, Tau_FDR, 
         Length of each sweep, which is necessary to reconstruct the fitting results into the origial form of the experiments
     dynamics : array
         Five flags to specify which state variables are necessary to be estimated; each flag determines if the corresponding state needs to be calculated.
-    ode_variables:array
+    ode_variables : array
         Order of state variables, which are necessary to pass them as a vector (without keywords)
     Tau_r0, a_FDR, Tau_FDR, p0, Tau_f, p0bar, a_i, Tau_i, a_D, Tau_D, Tau_r: floats
         Values of parameters. 
@@ -143,8 +143,6 @@ def feval(spikes, length_array, dynamics,ode_variables, Tau_r0, a_FDR, Tau_FDR, 
             y[3]=param_dict['p0bar']  # intial value
             y[1]=y[3]
         
-    
-        
         nspikes = len(spike_times)
         #print nspikes
         output = numpy.zeros((nspikes, 2 + len(y)))
@@ -158,9 +156,6 @@ def feval(spikes, length_array, dynamics,ode_variables, Tau_r0, a_FDR, Tau_FDR, 
         # and then we integrate the ode until the next spike.
         for i in range(0, nspikes):
             if i!=0:
-                
-           
-                # Instantaneous changes in state induced by spike
                 time_pts = numpy.arange(spike_times[i-1], spike_times[i], dt) + dt
                 # Integrate until next spike
                 psoln = odeint(f, y, time_pts, args=(param_dict,gating))
@@ -173,12 +168,12 @@ def feval(spikes, length_array, dynamics,ode_variables, Tau_r0, a_FDR, Tau_FDR, 
             yp = y[:]
             y01 = y[0]*y[1]
            
+            # Instantaneous changes in state induced by spike
             if gating['Dep']==1:
                 #y01 *= 
                 #if gating['Fac']==1:
                 #    y01 *= y[1]
                 yp[0] -=y01
-                
 		        
             if gating['Fac']==1:
                 if gating['SMR']==1:
@@ -198,9 +193,6 @@ def feval(spikes, length_array, dynamics,ode_variables, Tau_r0, a_FDR, Tau_FDR, 
             y = yp[:]
             if i==0:
                 initial_w=y[0]*y[1]*y[4]  
-
-              
-     
             
             yw[i,0]=y[0]*y[1]*y[4]/initial_w
             #print y[1],yw[1],p0_initial
@@ -212,6 +204,7 @@ def feval(spikes, length_array, dynamics,ode_variables, Tau_r0, a_FDR, Tau_FDR, 
         #print ex,i,len(output[:, 1])
     #print numpy.array(return_v)    
     return numpy.array(return_v)
+
 
 class ReleaseModel(object):
     """Presynaptic release model based on Hennig et al. 2013
