@@ -1128,6 +1128,28 @@ class Trace(Container):
         Equivalent to np.median(self.data)
         """
         return np.median(self.data)
+    
+    def __repr__(self):
+        if self.has_timing:
+            if self.has_time_values:
+                timing = "[has time values]"
+            else:
+                sample_rate = self._meta.get('sample_rate')
+                if sample_rate is None:
+                    timing = "t0=%g dt=%g" % (self.t0, self.dt)
+                else:
+                    timing = "t0=%g sample_rate=%g" % (self.t0, self.sample_rate)
+        else:
+            timing = "[no timing]"
+            
+        units = " units=" + self.units if self.units is not None else ""
+            
+        return "<%s length=%s %s%s>" % (
+            self.__class__.__name__,
+            len(self),
+            timing,
+            units,
+        )
 
 
 class TraceView(Trace):
