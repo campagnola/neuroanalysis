@@ -238,6 +238,20 @@ class MiesTrace(Trace):
                 self._data = (np.array(rec.command_hdf) * scale) + offset
         return self._data
     
+    @property
+    def shape(self):
+        # allow accessing shape without reading all data
+        if self._data is None:
+            rec = self.recording
+            chan = self.channel_id
+            if chan == 'primary':
+                return rec.primary_hdf.shape
+            elif chan == 'command':
+                return rec.command_hdf.shape
+        else:
+            return self._data.shape
+        
+
     
 class MiesRecording(PatchClampRecording):
     """A single stimulus / recording made on a single channel.
@@ -514,7 +528,12 @@ class MiesSyncRecording(SyncRecording):
 
         for ch in self._ad_channels:
             rec = self.create_recording(sweep_id, ch)
+            # there is a very rare/specific acquisition bug that we want to be able to ignore here:
+            if rec.holding_current is None and rec.holding_potential is None:
+                print("Warning: ignoring channel %s in %s; could not determine holding value." % (ch, self))
+                continue
             devs[rec.device_id] = rec
+
         SyncRecording.__init__(self, devs, parent=nwb)
         self._meta['sweep_id'] = sweep_id
 
