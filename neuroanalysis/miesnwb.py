@@ -234,7 +234,10 @@ class MiesTrace(Trace):
                 # that back in here.
                 offset = rec.holding_potential if rec.clamp_mode == 'vc' else rec.holding_current
                 if offset is None:
-                    raise Exception("Holding value unknown for this recording; cannot generate command data.")
+                    exc = Exception("Holding value unknown for this recording; cannot generate command data.")
+                    # Mark this exception so it can be ignored in specific places
+                    exc._ignorable_bug_flag = True
+                    raise exc
                 self._data = (np.array(rec.command_hdf) * scale) + offset
         return self._data
     
@@ -527,11 +530,15 @@ class MiesSyncRecording(SyncRecording):
         devs = OrderedDict()
 
         for ch in self._ad_channels:
-            rec = self.create_recording(sweep_id, ch)
             # there is a very rare/specific acquisition bug that we want to be able to ignore here:
-            if rec.holding_current is None and rec.holding_potential is None:
-                print("Warning: ignoring channel %s in %s; could not determine holding value." % (ch, self))
-                continue
+            try:
+                rec = self.create_recording(sweep_id, ch)
+            except Exception as exc:
+                if hasattr(exc, '_ignorable_bug_flag'):
+                    print("Warning: ignoring channel %s in %s; could not determine holding value." % (ch, self))
+                    continue
+                else:
+                    raise
             devs[rec.device_id] = rec
 
         SyncRecording.__init__(self, devs, parent=nwb)
