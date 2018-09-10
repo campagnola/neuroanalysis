@@ -119,6 +119,45 @@ class MiesNwb(Experiment):
                     meta.append(OrderedDict([(nb_keys[j], (None if np.isnan(tm[j]) else tm[j])) for j in range(len(nb_keys))]))
                 sweep_entries[swid] = meta
 
+            # Load textual keys in a similar way 
+            text_nb_keys = self.hdf['general']['labnotebook'][device]['textualKeys'][0]
+            text_nb_fields = OrderedDict([(k, i) for i,k in enumerate(text_nb_keys)])
+            text_nb = np.array(self.hdf['general']['labnotebook'][device]['textualValues'])
+            entry_source_type_index = text_nb_fields.get('EntrySourceType', None)
+
+            for rec in text_nb:                
+                try:
+                    source_type = int(rec[entry_source_type_index, 0])
+                except ValueError:
+                    # No entry source type recorded here; skip for now.
+                    continue
+
+                if source_type != 0:
+                    # Select only sweep records for now.
+                    continue
+
+                try:
+                    sweep_id = int(rec[0,0])
+                except ValueError:
+                    # Not sure how to handle records with no sweep ID; skip for now.
+                    continue
+                sweep_entry = sweep_entries[sweep_id]
+
+                for k,i in text_nb_fields.items():                    
+                    for j, val in enumerate(rec[i, :-1]):
+                        if k in sweep_entry[j]:
+                            # already have a value here; don't overwrite.
+                            continue
+
+                        if val == '':
+                            # take value from last column if this one is empty
+                            val == rec[i, -1]
+                        if val == '':
+                            # no value here; skip.
+                            continue
+                        
+                        sweep_entry[j][k] = val
+
             self._notebook = sweep_entries
             self._tp_notebook = tp_entries
             self._notebook_keys = nb_fields
