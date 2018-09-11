@@ -345,20 +345,44 @@ class MiesRecording(PatchClampRecording):
         if stim is None:
             stim_name = self.hdf_group['stimulus_description'].value[0]
             stim = stimuli.Stimulus(description=stim_name)
+            
+            # Add holding offset
+            if self.clamp_mode == 'ic':                
+                units = 'A'
+                stim.append_item(stimuli.Offset(
+                    start_time=0,
+                    amplitude=self.holding_current,
+                    description="holding current",
+                    units=units,
+                ))
+            elif self.clamp_mode == 'vc':
+                units = 'V'
+                stim.append_item(stimuli.Offset(
+                    start_time=0,
+                    amplitude=self.holding_potential,
+                    description="holding potential",
+                    units=units,
+                ))
+            else:
+                units = None
+            
+            # inserted test pulse?
             if self.has_inserted_test_pulse:
                 stim.append_item(self.inserted_test_pulse.stimulus)
 
-            if 'Stim Wave Note' in self._meta['notebook']:
+            notebook = self._meta['notebook']
+            
+            if 'Stim Wave Note' in notebook:
                 # Stim Wave Note format is expained here: 
                 # https://alleninstitute.github.io/MIES/file/_m_i_e_s___wave_builder_8ipf.html#_CPPv319WB_GetWaveNoteEntry4wave8variable6string8variable8variable
 
                 # read stimulus structure from notebook
-                sweep_count = int(self._meta['notebook']['Set Sweep Count'])
-                wave_note = self._meta['notebook']['Stim Wave Note']
+                sweep_count = int(notebook['Set Sweep Count'])
+                wave_note = notebook['Stim Wave Note']
                 epochs = [line for line in wave_note.split('\n') if line.startswith('Sweep = %d;' % sweep_count)]
                 assert len(epochs) > 0
-                scale = (1e-3 if self.clamp_mode == 'vc' else 1e-9) * self._meta['notebook']['Stim Scale Factor']
-                t = 0
+                scale = (1e-3 if self.clamp_mode == 'vc' else 1e-12) * notebook['Stim Scale Factor']
+                t = (notebook['Delay onset oodDAQ'] + notebook['Delay onset user'] + notebook['Delay onset auto']) * 1e-3
                 for epoch in epochs:
                     fields = dict([part.split(' = ') for part in epoch.split(';') if '=' in part])
                     if fields['Epoch'] == 'nan':
@@ -373,7 +397,8 @@ class MiesRecording(PatchClampRecording):
                             start_time=t, 
                             amplitude=float(fields['Amplitude']) * scale, 
                             duration=duration, 
-                            description=name
+                            description=name,
+                            units=units,
                         )
                     elif stim_type == 'Pulse Train':
                         assert fields['Poisson distribution'] == 'False', "Poisson distributed pulse train not supported"
@@ -386,8 +411,8 @@ class MiesRecording(PatchClampRecording):
                             amplitude=float(fields['Amplitude']) * scale,
                             interval=float(fields['Pulse To Pulse Length']) * 1e-3,
                             description=name,
+                            units=units,
                         )
-                        raise Exception()
                     else:
                         print(fields)
                         print("Warning: unknown stimulus type %s in %s sweep %s" % (stim_type, self._nwb, self._trace_id))
