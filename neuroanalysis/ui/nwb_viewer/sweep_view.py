@@ -24,6 +24,7 @@ class SweepView(QtGui.QWidget):
         self.params = pg.parametertree.Parameter(name='params', type='group', children=[
             {'name': 'lowpass', 'type': 'float', 'value': 0, 'limits': [0, None], 'step': 1},
             {'name': 'average', 'type': 'bool', 'value': False},
+            {'name': 'show command', 'type': 'bool', 'value': False},
         ])
         self.params.sigTreeStateChanged.connect(self._update_plots)
 
@@ -52,7 +53,7 @@ class SweepView(QtGui.QWidget):
         chans = np.array(sweeps[0].devices)[mask]
 
         # setup plot grid
-        self.plots.set_shape(len(chans), 1)
+        self.plots.set_shape(len(chans) * 2, 1)
         self.plots.setClipToView(True)
         self.plots.setDownsampling(True, True, 'peak')
 
@@ -63,13 +64,22 @@ class SweepView(QtGui.QWidget):
         for i in range(data.shape[0]):
             alpha = 100 if self.params['average'] else 200
             for j in range(data.shape[1]):
-                plt = self.plots[j, 0]
+                plt = self.plots[j*2 + 1, 0]
                 plt.plot(t, data[i, j], pen=(255, 255, 255, alpha), antialias=True)
-
+                
+                if self.params['show command']:
+                    plt = self.plots[j*2, 0]
+                    cmd = sweeps[i][chans[j]]['command'].data
+                    plt.plot(t, cmd, pen=(255, 255, 255, alpha), antialias=True)
+                    
+                    # cmd2 = sweeps[i][chans[j]].stimulus.eval(time_values=t, index_mode='ceil').data
+                    # plt.plot(t, cmd2, pen=(255, 255, 0, alpha), antialias=True)
+                    # plt.plot(t, cmd2 - cmd, pen=(255, 0, 0, alpha), antialias=True)
+                    
         # plot average
         if self.params['average']:
             for j in range(data.shape[1]):
-                plt = self.plots[j, 0]
+                plt = self.plots[j*2 + 1, 0]
                 plt.plot(t, data[:, j].mean(axis=0), pen=(0, 255, 0), shadowPen={'color': (0, 0, 0), 'width': 2}, antialias=True)
 
         # set axis labels / units
@@ -77,12 +87,21 @@ class SweepView(QtGui.QWidget):
             sw = sweeps[0]
             ch = chans[j]
             tr = sw[ch]
-            units = 'A' if tr.clamp_mode == 'vc' else 'V'
-            self.plots[j, 0].setLabels(left=("Channel %d" % ch, units))
+            units = ('V', 'A') if tr.clamp_mode == 'vc' else ('A', 'V')
+            self.plots[j * 2, 0].setLabels(left=("" % ch, units[0]))
+            self.plots[j * 2 + 1, 0].setLabels(left=("Channel %d" % ch, units[1]))
 
-        # link x axes together
-        for j in range(1, data.shape[1]):
-            self.plots[j, 0].setXLink(self.plots[0, 0])
+            if self.params['show command']:
+                self.plots[j * 2, 0].show()
+                self.plots[j * 2, 0].setMaximumHeight(35)
+                self.plots[j * 2, 0].hideAxis('bottom')
+            else:
+                self.plots[j * 2, 0].hide()
+                self.plots[j * 2, 0].setMaximumHeight(0)
+
+            # link x axes together
+            self.plots[j * 2, 0].setXLink(self.plots[0, 0])
+            self.plots[j * 2 + 1, 0].setXLink(self.plots[0, 0])
 
     def filter(self, data):
         lp = self.params['lowpass']
