@@ -892,12 +892,10 @@ class Trace(Container):
         beginning or end of the trace. See index_at for a description of
         the *mode* parameter.
         """
-        if self.regularly_sampled:
-            i1 = self.index_at(start, mode) if start is not None else None
-            i2 = self.index_at(stop, mode) if stop is not None else None
-        else:
-            i1 = np.argwhere(self.time_values >= start)[0,0] if start is not None else None
-            i2 = np.argwhere(self.time_values >= stop)[0,0] if stop is not None else None
+        i1 = self.index_at(start, mode) if start is not None else None
+        i2 = self.index_at(stop, mode) if stop is not None else None
+        if i1 < 0 or i2 >= len(self):
+            raise IndexError("Time slice out of range: requested slice [%f:%f] from trace [%f:%f]" % (start, stop, self.t0, self.t0 + self.duration))
         return self[i1:i2]
 
     def value_at(self, t, interp='linear'):
