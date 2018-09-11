@@ -768,7 +768,7 @@ class Trace(Container):
             else:
                 return (index * (1.0 / sample_rate)) + self.t0
  
-    def index_at(self, t):
+    def index_at(self, t, mode=None):
         """Return the index at specified timepoint(s).
 
         Returned values are *rounded* to the nearest integer; may yield unexpected
@@ -778,6 +778,9 @@ class Trace(Container):
         ----------
         t : float | array-like
             The time value(s) for which array index(es) will be returned.
+        mode : str
+            Integer conversion mode: 'round' (default), 'floor', or 'ceil'. This argument is ignored
+            if self.has_time_values is True.
         """
         if not self.has_timing:
             raise TypeError("No sample timing is specified for this trace.")
@@ -803,7 +806,14 @@ class Trace(Container):
             else:
                 inds = (t - self.t0) * sample_rate
             
-            inds = np.round(inds)
+            if mode is None or mode == 'round':
+                inds = np.round(inds)
+            elif mode == 'floor':
+                inds = np.floor(inds)
+            elif mode == 'ceil':
+                inds = np.ceil(inds)
+            else:
+                raise ValueError("mode must be 'round', 'ceil', or 'floor'; got %r" % mode)
 
             if np.isscalar(t):
                 return int(inds)        
@@ -875,15 +885,16 @@ class Trace(Container):
         """
         return self._time_values is not None
 
-    def time_slice(self, start, stop):
+    def time_slice(self, start, stop, mode=None):
         """Return a view of this trace with a specified start/stop time.
         
         Times are given relative to t0, and may be None to specify the
-        beginning or end of the trace.
+        beginning or end of the trace. See index_at for a description of
+        the *mode* parameter.
         """
         if self.regularly_sampled:
-            i1 = int(np.round((start - self.t0) / self.dt)) if start is not None else None
-            i2 = i1 + int(np.round((stop - start) / self.dt)) if stop is not None else None
+            i1 = self.index_at(start, mode) if start is not None else None
+            i2 = self.index_at(stop, mode) if stop is not None else None
         else:
             i1 = np.argwhere(self.time_values >= start)[0,0] if start is not None else None
             i2 = np.argwhere(self.time_values >= stop)[0,0] if stop is not None else None
@@ -1165,18 +1176,6 @@ class TraceView(Trace):
         elif trace.has_timing:
             meta['t0'] = trace.time_at(inds[0])
         Trace.__init__(self, data, recording=trace.recording, **meta)
-    
-    # @property
-    # def time_values(self):
-    #     return self._parent_trace.time_values[self._view_slice]
-
-    # def time_at(self, index):
-    #     if not np.isscalar(index):
-    #         index = np.asarray(index)
-    #     return self._parent_trace.time_at(index + self._view_indices[0])
-
-    # def index_at(self, t):
-    #     return self._parent_trace.index_at(t) - self._view_indices[0]
 
     @property
     def parent(self):
