@@ -59,7 +59,7 @@ class MiesNwbExplorer(QtGui.QSplitter):
 
         for i,sweep in enumerate(self._nwb.contents):
             recs = sweep.recordings
-            stim = recs[0].meta.get('stimulus')
+            stim = recs[0].stimulus
             stim_name = '' if stim is None else stim.description
             modes = ''
             V_holdings = ''

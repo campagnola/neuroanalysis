@@ -320,7 +320,7 @@ class MiesRecording(PatchClampRecording):
         self.meta['holding_current'] = (
             None if nb['I-Clamp Holding Level'] is None
             else nb['I-Clamp Holding Level'] * 1e-12
-        )
+        )   
         self._meta['notebook'] = nb
         if nb['Clamp Mode'] == 0:
             self._meta['clamp_mode'] = 'vc'
@@ -347,6 +347,56 @@ class MiesRecording(PatchClampRecording):
             stim = stimuli.Stimulus(description=stim_name)
             if self.has_inserted_test_pulse:
                 stim.append_item(self.inserted_test_pulse.stimulus)
+
+            if 'Stim Wave Note' in self._meta['notebook']:
+                # Stim Wave Note format is expained here: 
+                # https://alleninstitute.github.io/MIES/file/_m_i_e_s___wave_builder_8ipf.html#_CPPv319WB_GetWaveNoteEntry4wave8variable6string8variable8variable
+
+                # read stimulus structure from notebook
+                sweep_count = int(self._meta['notebook']['Set Sweep Count'])
+                wave_note = self._meta['notebook']['Stim Wave Note']
+                epochs = [line for line in wave_note.split('\n') if line.startswith('Sweep = %d;' % sweep_count)]
+                assert len(epochs) > 0
+                scale = (1e-3 if self.clamp_mode == 'vc' else 1e-9) * self._meta['notebook']['Stim Scale Factor']
+                t = 0
+                for epoch in epochs:
+                    fields = dict([part.split(' = ') for part in epoch.split(';') if '=' in part])
+                    if fields['Epoch'] == 'nan':
+                        # Sweep-specific entry; not sure if we need to do anything with this.
+                        continue
+
+                    stim_type = fields.get('Type')
+                    duration = float(fields.get('Duration')) * 1e-3
+                    name = "Epoch %d" % int(fields['Epoch'])
+                    if stim_type == 'Square pulse':
+                        item = stimuli.SquarePulse(
+                            start_time=t, 
+                            amplitude=float(fields['Amplitude']) * scale, 
+                            duration=duration, 
+                            description=name
+                        )
+                    elif stim_type == 'Pulse Train':
+                        assert fields['Poisson distribution'] == 'False', "Poisson distributed pulse train not supported"
+                        assert fields['Mixed frequency'] == 'False', "Mixed frequency pulse train not supported"
+                        assert fields['Pulse Type'] == 'Square', "Pulse train with %s pulse type not supported"
+                        item = stimuli.SquarePulseTrain(
+                            start_time=t,
+                            n_pulses=int(fields['Number of pulses']),
+                            pulse_duration=float(fields['Pulse duration']) * 1e-3,
+                            amplitude=float(fields['Amplitude']) * scale,
+                            interval=float(fields['Pulse To Pulse Length']) * 1e-3,
+                            description=name,
+                        )
+                        raise Exception()
+                    else:
+                        print(fields)
+                        print("Warning: unknown stimulus type %s in %s sweep %s" % (stim_type, self._nwb, self._trace_id))
+                        item = None
+                
+                    t += duration
+                    if item is not None:
+                        stim.append_item(item)
+
             self._meta['stimulus'] = stim
         return stim
 
