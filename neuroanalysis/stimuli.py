@@ -1,3 +1,4 @@
+# coding: utf8
 from __future__ import division, print_function
 from collections import OrderedDict
 import numpy as np
@@ -212,6 +213,7 @@ class Stimulus(object):
         if time_values is not None:
             data = np.zeros(len(time_values))
         else:
+            assert n_pts is not None, "Must specify n_pts, time_values, or trace."
             data = np.zeros(n_pts)
         return Trace(data, t0=t0, dt=dt, sample_rate=sample_rate, time_values=time_values, units=self.units)
 
@@ -293,13 +295,13 @@ class Offset(Stimulus):
 
     def eval(self, **kwds):
         trace = Stimulus.eval(self, **kwds)
-        start_ind = trace.index_at(self.global_start_time, mode=kwds.get('index_mode'))
+        start_ind = trace.index_at(self.global_start_time, index_mode=kwds.get('index_mode'))
         trace.data[start_ind:] += self.amplitude
         return trace
 
     def mask(self, **kwds):
         trace = Stimulus.mask(self, **kwds)
-        start_ind = trace.index_at(self.global_start_time, mode=kwds.get('index_mode'))
+        start_ind = trace.index_at(self.global_start_time, index_mode=kwds.get('index_mode'))
         trace.data[start_ind:] = True
         return trace
         
@@ -331,13 +333,13 @@ class SquarePulse(Stimulus):
     def eval(self, **kwds):
         trace = Stimulus.eval(self, **kwds)
         start = self.global_start_time
-        trace.time_slice(start, start+self.duration, mode=kwds.get('index_mode')).data[:] += self.amplitude
+        trace.time_slice(start, start+self.duration, index_mode=kwds.get('index_mode')).data[:] += self.amplitude
         return trace
 
     def mask(self, **kwds):
         trace = Stimulus.mask(self, **kwds)
         start = self.global_start_time
-        trace.time_slice(start, start+self.duration, mode=kwds.get('index_mode')).data[:] = True
+        trace.time_slice(start, start+self.duration, index_mode=kwds.get('index_mode')).data[:] = True
         return trace
 
 
@@ -459,14 +461,14 @@ class Ramp(Stimulus):
     def eval(self, **kwds):
         trace = Stimulus.eval(self, **kwds)
         start = self.global_start_time
-        region = trace.time_slice(start, start + self.duration, mode=kwds.get('index_mode'))
+        region = trace.time_slice(start, start + self.duration, index_mode=kwds.get('index_mode'))
         region.data[:] += np.arange(len(region)) * self.slope + self.offset
         return trace
 
     def mask(self, **kwds):
         trace = Stimulus.mask(self, **kwds)
         start = self.global_start_time
-        region = trace.time_slice(start, start + self.duration, mode=kwds.get('index_mode'))
+        region = trace.time_slice(start, start + self.duration, index_mode=kwds.get('index_mode'))
         region.data[:] = True
         return trace
 
@@ -507,7 +509,7 @@ class Sine(Stimulus):
     def eval(self, **kwds):
         trace = Stimulus.eval(self, **kwds)
         start = self.global_start_time
-        chunk = trace.time_slice(start, start+self.duration, mode=kwds.get('index_mode'))
+        chunk = trace.time_slice(start, start+self.duration, index_mode=kwds.get('index_mode'))
         chunk.data[:] += self.offset
         
         t = chunk.time_values - start
@@ -518,7 +520,7 @@ class Sine(Stimulus):
     def mask(self, **kwds):
         trace = Stimulus.mask(self, **kwds)
         start = self.global_start_time
-        chunk = trace.time_slice(start, start+self.duration, mode=kwds.get('index_mode'))
+        chunk = trace.time_slice(start, start+self.duration, index_mode=kwds.get('index_mode'))
         chunk.data[:] = True
         return trace
 
