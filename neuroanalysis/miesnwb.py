@@ -379,7 +379,10 @@ class MiesRecording(PatchClampRecording):
                 # read stimulus structure from notebook
                 sweep_count = int(notebook['Set Sweep Count'])
                 wave_note = notebook['Stim Wave Note']
-                epochs = [line for line in wave_note.split('\n') if line.startswith('Sweep = %d;' % sweep_count)]
+                lines = wave_note.split('\n')
+                version = [line for line in line if line.startswith('Version =')][0]
+                version = version.rstrip(';').split(' = ')[1]
+                epochs = [line for line in line if line.startswith('Sweep = %d;' % sweep_count)]
                 assert len(epochs) > 0
                 scale = (1e-3 if self.clamp_mode == 'vc' else 1e-12) * notebook['Stim Scale Factor']
                 t = (notebook['Delay onset oodDAQ'] + notebook['Delay onset user'] + notebook['Delay onset auto']) * 1e-3
@@ -419,7 +422,9 @@ class MiesRecording(PatchClampRecording):
                         )
                     elif stim_type == 'Sin Wave':
                         assert fields['FunctionType'] == 'Sin', "Sin wave function type %s not supported" % fields['Function type']
-                        if fields['Log chirp'] == True:
+                        # bug in stim wave note version 2: log chirp field is inverted
+                        is_chirp = fields['Log chirp'] == ('False' if version == '2' else 'True')
+                        if not is_chirp:
                             item = stimuli.Sine(
                                 start_time=t,
                                 frequency=float(fields['Frequency']),
