@@ -576,18 +576,18 @@ class Chirp(Stimulus):
 
     Now we can apply the frequency constraints to solve for k and r::
 
-        f(t) = dw/dt / (2 pi)
-        f(0) = k ln(r) / (2 pi d)
-        f(d) = k r ln(r) / (2 pi d)
+        f(t) = dw/dt / (2 π)
+        f(0) = k ln(r) / (2 π d)
+        f(d) = k r ln(r) / (2 π d)
 
     Solving for k and r, we get::
 
-        k = 2 pi f(0) d / ln(r)
+        k = 2 π f(0) d / ln(r)
         r = f(d) / f(0)
 
     And the final equation (without phase and offset) is::
 
-        y(t) = sin[2 pi f(0) d (f(d) / f(0))^(t / d) / ln(f(d) / f(0)]
+        y(t) = sin[2 π f(0) d (f(d) / f(0))^(t / d) / ln(f(d) / f(0)]
     """
     _attributes = Stimulus._attributes + ['duration', 'start_frequency', 'end_frequency', 'amplitude', 'phase', 'offset']
 
@@ -603,22 +603,42 @@ class Chirp(Stimulus):
     def eval(self, **kwds):
         trace = Stimulus.eval(self, **kwds)
         start = self.global_start_time
-        chunk = trace.time_slice(start, start + self.duration, mode=kwds.get('index_mode'))
+        chunk = trace.time_slice(start, start + self.duration, index_mode=kwds.get('index_mode'))
         chunk.data[:] += self.offset
 
         t = chunk.time_values - start
-
-        f0, f1 = self.start_frequency, self.end_frequency
-        k = 2 * np.pi * self.duration * f0 / np.log(f1/f0)
-        w = k * (f1/f0) ** (t/self.duration)
-        d2 = self.amplitude * np.sin(self.phase - w[0] + w)
+        d2 = self.amplitude * np.sin(self.phase_at(t))
 
         chunk.data[:] += d2
         return trace
 
+    def _kr(self):
+        # return constants k and r (see mathy notes above)
+        f0, f1 = self.start_frequency, self.end_frequency
+        r = 0 if f0 == 0 else f1 / f0
+        k = 2 * np.pi * self.duration * f0 / np.log(r)        
+        return k, r
+
+    def phase_at(self, t):
+        """Return the phase of the chirp at time (or array of times) *t* relative
+        to the start of the chirp.
+        """
+        k, r = self._kr()
+        w = k * r ** (t / self.duration)
+        return self.phase - k + w
+
+    def frequency_at(self, t):
+        """Return the frequency of the chirp at time (or array of times) *t* relative
+        to the start of the chirp.
+        """
+        # f(t) = k ln(r) r^(t/d) / (2 π d)
+        k, r = self._kr()
+        d = self.duration
+        return k * np.log(r) * r ** (t/d) / (2 * np.pi * d)
+
     def mask(self, **kwds):
         trace = Stimulus.mask(self, **kwds)
         start = self.global_start_time
-        chunk = trace.time_slice(start, start+self.duration, mode=kwds.get('index_mode'))
+        chunk = trace.time_slice(start, start+self.duration, index_mode=kwds.get('index_mode'))
         chunk.data[:] = True
         return trace
