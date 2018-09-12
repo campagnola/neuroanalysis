@@ -396,17 +396,13 @@ class MiesRecording(PatchClampRecording):
                     duration = float(fields.get('Duration')) * 1e-3
                     name = "Epoch %d" % int(fields['Epoch'])
                     if stim_type == 'Square pulse':
-                        if fields['Amplitude'] == 0:
-                            # epoch probably just used to fill space
-                            item = None
-                        else:
-                            item = stimuli.SquarePulse(
-                                start_time=t, 
-                                amplitude=float(fields['Amplitude']) * scale, 
-                                duration=duration, 
-                                description=name,
-                                units=units,
-                            )
+                        item = stimuli.SquarePulse(
+                            start_time=t, 
+                            amplitude=float(fields['Amplitude']) * scale, 
+                            duration=duration, 
+                            description=name,
+                            units=units,
+                        )
                     elif stim_type == 'Pulse Train':
                         assert fields['Poisson distribution'] == 'False', "Poisson distributed pulse train not supported"
                         assert fields['Mixed frequency'] == 'False', "Mixed frequency pulse train not supported"
@@ -422,21 +418,18 @@ class MiesRecording(PatchClampRecording):
                         )
                     elif stim_type == 'Sin Wave':
                         assert fields['FunctionType'] == 'Sin', "Sin wave function type %s not supported" % fields['Function type']
+<<<<<<< HEAD
                         # bug in stim wave note version 2: log chirp field is inverted
                         is_chirp = fields['Log chirp'] == ('False' if version == '2' else 'True')
                         if not is_chirp:
                             item = stimuli.Sine(
-                                start_time=t,
-                                frequency=float(fields['Frequency']),
-                                duration=duration,
-                                amplitude=float(fields['Amplitude']) * scale,
-                                phase=0,
-                                offset=float(fields['Offset']) * scale,
-                                description=name,
-                                units=units,
-                            )
-                        else:
+||||||| merged common ancestors
+                        if fields['Log chirp'] == True:
+                            item = stimuli.Sine(
+=======
+                        if fields['Log chirp'] == 'True':
                             item = stimuli.Chirp(
+>>>>>>> db8dc819dc8281932ef39c910082f1c9b1227c41
                                 start_time=t,
                                 start_frequency=float(fields['Frequency']),
                                 end_frequency=float(fields['End frequency']),
@@ -447,7 +440,17 @@ class MiesRecording(PatchClampRecording):
                                 description=name,
                                 units=units,
                             )
-                        
+                        else:
+                            item = stimuli.Sine(
+                                start_time=t,
+                                frequency=float(fields['Frequency']),
+                                duration=duration,
+                                amplitude=float(fields['Amplitude']) * scale,
+                                phase=0,
+                                offset=float(fields['Offset']) * scale,
+                                description=name,
+                                units=units,
+                            )
                     else:
                         print(fields)
                         print("Warning: unknown stimulus type %s in %s sweep %s" % (stim_type, self._nwb, self._trace_id))

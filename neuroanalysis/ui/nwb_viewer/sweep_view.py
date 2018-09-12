@@ -69,11 +69,11 @@ class SweepView(QtGui.QWidget):
                 
                 if self.params['show command']:
                     plt = self.plots[j*2, 0]
-                    cmd = sweeps[i][chans[j]]['command'].data
-                    plt.plot(t, cmd, pen=(255, 255, 255, alpha), antialias=True)
+                    cmd = sweeps[i][chans[j]]['command']
+                    plt.plot(t, cmd.data, pen=(255, 255, 255, alpha), antialias=True)
                     
-                    # cmd2 = sweeps[i][chans[j]].stimulus.eval(time_values=t, index_mode='ceil').data
-                    # plt.plot(t, cmd2, pen=(255, 255, 0, alpha), antialias=True)
+                    cmd2 = sweeps[i][chans[j]].stimulus.eval(t0=cmd.t0, sample_rate=cmd.sample_rate, n_pts=len(cmd), index_mode='ceil').data
+                    plt.plot(t, cmd2, pen=(255, 255, 0, alpha), antialias=True)
                     # plt.plot(t, cmd2 - cmd, pen=(255, 0, 0, alpha), antialias=True)
                     
         # plot average

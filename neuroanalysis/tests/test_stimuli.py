@@ -268,6 +268,10 @@ def test_chirp():
     assert np.allclose(eval_data, test_data)
     assert np.all(mask_data == (eval_data != 0))
 
+    # test eval with first timepoint not at beginning of chirp
+    t2 = np.arange(5000, 10000) * dt
+    assert np.allclose(stim.eval(time_values=t2).data, eval_data[5000:])
+
     # measure approximate frequency by interpolated zero-crossings
     d = eval_data[1000:9000]-off
     inds = np.where(np.diff(np.sign(d)))[0]
@@ -284,3 +288,7 @@ def test_chirp():
     # check center
     ind = np.argwhere(zeros > 0.4)[0,0]
     assert (abs(freqs[ind] / (f0*10)) - 1.0) < 0.1
+
+    # test analytically determined frequencies
+    freqs = f0 ** np.linspace(1, np.log(f1) / np.log(f0), len(t)+1)[:-1]
+    assert np.allclose(freqs, stim.frequency_at(t))

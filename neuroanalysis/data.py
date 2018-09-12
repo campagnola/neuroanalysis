@@ -768,17 +768,14 @@ class Trace(Container):
             else:
                 return (index * (1.0 / sample_rate)) + self.t0
  
-    def index_at(self, t, mode=None):
+    def index_at(self, t, index_mode=None):
         """Return the index at specified timepoint(s).
-
-        Returned values are *rounded* to the nearest integer; may yield unexpected
-        results if the requested time values are half-way between samples.
 
         Parameters
         ----------
         t : float | array-like
             The time value(s) for which array index(es) will be returned.
-        mode : str
+        index_mode : str
             Integer conversion mode: 'round' (default), 'floor', or 'ceil'. This argument is ignored
             if self.has_time_values is True.
         """
@@ -792,7 +789,7 @@ class Trace(Container):
             inds1 = np.searchsorted(self.time_values, t)
             inds0 = inds1 - 1
             # select closest sample
-            dif1 = abs(self.time_values[inds1] - t)
+            dif1 = abs(self.time_values[np.clip(inds1, 0, len(self)-1)] - t)
             dif0 = abs(self.time_values[inds0] - t)
             inds = np.where(dif0 < dif1, inds0, inds1)
             if np.isscalar(t):
@@ -806,14 +803,14 @@ class Trace(Container):
             else:
                 inds = (t - self.t0) * sample_rate
             
-            if mode is None or mode == 'round':
+            if index_mode is None or index_mode == 'round':
                 inds = np.round(inds)
-            elif mode == 'floor':
+            elif index_mode == 'floor':
                 inds = np.floor(inds)
-            elif mode == 'ceil':
+            elif index_mode == 'ceil':
                 inds = np.ceil(inds)
             else:
-                raise ValueError("mode must be 'round', 'ceil', or 'floor'; got %r" % mode)
+                raise ValueError("index_mode must be 'round', 'ceil', or 'floor'; got %r" % index_mode)
 
             if np.isscalar(t):
                 return int(inds)        
@@ -885,17 +882,23 @@ class Trace(Container):
         """
         return self._time_values is not None
 
-    def time_slice(self, start, stop, mode=None):
+    def time_slice(self, start, stop, index_mode=None):
         """Return a view of this trace with a specified start/stop time.
         
         Times are given relative to t0, and may be None to specify the
-        beginning or end of the trace. See index_at for a description of
-        the *mode* parameter.
+        beginning or end of the trace.
+        
+        Parameters
+        ----------
+        start : float
+            Time at the start of the slice
+        stop : float
+            Time at the end of the slice (non-inclusive)
+        index_mode : str
+            See index_at for a description of this parameter.
         """
-        i1 = self.index_at(start, mode) if start is not None else None
-        i2 = self.index_at(stop, mode) if stop is not None else None
-        if i1 < 0 or i2 >= len(self):
-            raise IndexError("Time slice out of range: requested slice [%f:%f] from trace [%f:%f]" % (start, stop, self.t0, self.t0 + self.duration))
+        i1 = max(0, self.index_at(start, index_mode)) if start is not None else None
+        i2 = max(0, self.index_at(stop, index_mode)) if stop is not None else None
         return self[i1:i2]
 
     def value_at(self, t, interp='linear'):
