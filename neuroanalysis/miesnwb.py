@@ -18,6 +18,7 @@ class MiesNwb(Experiment):
         self.filename = filename
         self._hdf = None
         self._sweeps = None
+        self._timeseries = None
         self._groups = None
         self._notebook = None
         self.open()
@@ -170,11 +171,17 @@ class MiesNwb(Experiment):
         """A list of all sweeps in this file.
         """
         if self._sweeps is None:
-            sweeps = set()
-            for k in self.hdf['acquisition/timeseries'].keys():
-                a, b, c = k.split('_')[:3] #discard anything past AD# channel
-                sweeps.add(b)
-            self._sweeps = [self.create_sync_recording(int(sweep_id)) for sweep_id in sorted(list(sweeps))]
+            # sort all timeseries groups into sweeps / channels
+            self._timeseries = {}
+            for ts_name, ts in self.hdf['acquisition/timeseries'].items():
+                src = dict([field.split('=') for field in ts.attrs['source'].split(';')])
+                sweep = int(src['Sweep'])
+                ad_chan = int(src['AD'])
+                src['hdf_group_name'] = 'acquisition/timeseries/' + ts_name
+                self._timeseries.setdefault(sweep, {})[ad_chan] = src
+            
+            sweep_ids = sorted(list(self._timeseries.keys()))
+            self._sweeps = [self.create_sync_recording(int(sweep_id)) for sweep_id in sweep_ids]
         return self._sweeps
     
     def create_sync_recording(self, sweep_id):
@@ -305,6 +312,7 @@ class MiesRecording(PatchClampRecording):
         self._trace_id = (sweep_id, ad_chan)
         self._inserted_test_pulse = None
         self._nearest_test_pulse = None
+        self._hdf_group_name = sweep._channel_keys[ad_chan]['hdf_group_name']
         self._hdf_group = None
         self._da_chan = None
         headstage_id = int(self.hdf_group['electrode_name'].value[0].split('_')[1])
@@ -383,10 +391,6 @@ class MiesRecording(PatchClampRecording):
                 scale = (1e-3 if self.clamp_mode == 'vc' else 1e-12) * notebook['Stim Scale Factor']
                 t = (notebook['Delay onset oodDAQ'] + notebook['Delay onset user'] + notebook['Delay onset auto']) * 1e-3
                 
-                print(self._trace_id, stim_name, version, notebook['Set Sweep Count'])
-                for ep in epochs:
-                    print(ep)
-                
                 # if dDAQ is active, add delay from previous channels
                 if notebook['Distributed DAQ'] == 1.0:
                     ddaq_delay = notebook['Delay distributed DAQ'] * 1e-3
@@ -394,11 +398,9 @@ class MiesRecording(PatchClampRecording):
                         rec = self.parent[dev]
                         if rec is self:
                             break
-                        print("  add delay from %r" % dev)
                         _, epochs = rec._stim_wave_note()
                         for ep in epochs:
                             dt = float(ep.get('Duration', 0)) * 1e-3
-                            print("     epoch %s %f" % (ep.get('Epoch', '-'), dt))
                             t += dt
                         t += ddaq_delay
                 
@@ -484,8 +486,11 @@ class MiesRecording(PatchClampRecording):
         sweep_count = int(notebook['Set Sweep Count'])
         wave_note = notebook['Stim Wave Note']
         lines = wave_note.split('\n')
-        version = [line for line in lines if line.startswith('Version =')][0]
-        version = float(version.rstrip(';').split(' = ')[1])
+        version = [line for line in lines if line.startswith('Version =')]
+        if len(version) == 0:
+            version = 0
+        else:
+            version = float(version[0].rstrip(';').split(' = ')[1])
         epochs = []
         for line in lines:
             if not line.startswith('Sweep = %d;' % sweep_count):
@@ -498,7 +503,7 @@ class MiesRecording(PatchClampRecording):
     @property
     def hdf_group(self):
         if self._hdf_group is None:
-            self._hdf_group = self._nwb.hdf['acquisition/timeseries/data_%05d_AD%d' % self._trace_id]
+            self._hdf_group = self._nwb.hdf[self._hdf_group_name]
         return self._hdf_group
 
     @property
@@ -704,18 +709,15 @@ class MiesSyncRecording(SyncRecording):
         self._notebook_entry = None
 
         # get list of all A/D channels in this sweep
-        chans = []
-        for k in self._nwb.hdf['acquisition/timeseries'].keys():
-            if not k.startswith('data_%05d_' % sweep_id):
-                continue
-            chans.append(int(k.split('_')[2][2:]))
-        self._ad_channels = sorted(chans)
+        self._channel_keys = self._nwb._timeseries.get(sweep_id, {})
+        self._ad_channels = sorted(list(self._channel_keys.keys()))
         
         devs = OrderedDict()
 
         for ch in self._ad_channels:
             # there is a very rare/specific acquisition bug that we want to be able to ignore here:
             try:
+                hdf_group_name = self._channel_keys[ch]['hdf_group_name']
                 rec = self.create_recording(sweep_id, ch)
             except Exception as exc:
                 if hasattr(exc, '_ignorable_bug_flag'):
