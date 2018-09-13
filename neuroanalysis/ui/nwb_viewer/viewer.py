@@ -5,6 +5,7 @@ from ..signal import SignalBlock
 
 from .sweep_view import SweepView
 from .analyzer_view import AnalyzerView
+from ...util import merge_lists
 
 
 class MiesNwbExplorer(QtGui.QSplitter):
@@ -175,8 +176,12 @@ class MiesNwbExplorer(QtGui.QSplitter):
         self.selection_changed.emit(sel)
 
     def _populate_meta_tree(self, meta, root):
-        for k in meta[0]:
-            vals = [m[k] for m in meta]
+        keys = list(meta[0].keys())
+        for m in meta[1:]:
+            keys = merge_lists(keys, m.keys())
+        
+        for k in keys:
+            vals = [m.get(k) for m in meta]
             if isinstance(vals[0], dict):
                 item = QtGui.QTreeWidgetItem([k] + [''] * len(meta))
                 self._populate_meta_tree(vals, item)

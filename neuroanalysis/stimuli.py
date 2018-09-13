@@ -513,9 +513,16 @@ class Sine(Stimulus):
         chunk.data[:] += self.offset
         
         t = chunk.time_values - start
-        chunk.data[:] += self.amplitude * np.sin(self.phase + (t * (2 * np.pi * self.frequency)))
+        phase = self.phase_at(t)
+        chunk.data[:] += self.amplitude * np.sin(phase)
 
         return trace
+
+    def phase_at(self, t):
+        """Return the phase of the sine wave at time (or array of times) *t* relative
+        to the start time.
+        """
+        return self.phase + (t * (2 * np.pi * self.frequency))
 
     def mask(self, **kwds):
         trace = Stimulus.mask(self, **kwds)
