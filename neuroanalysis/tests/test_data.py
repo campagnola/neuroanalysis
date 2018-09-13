@@ -109,6 +109,7 @@ def check_trace(tr, data, time_values, has_timing, has_time_values, regularly_sa
     # test nested view
     if tr.regularly_sampled:
         view2 = view.time_slice(view.t0 + 20*tr.dt, view.t0 + 50*tr.dt)
+    
     else:
         # don't try time_slice with irregularly sampled
         view2 = view[20:50]

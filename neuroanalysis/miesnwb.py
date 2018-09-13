@@ -1,3 +1,4 @@
+from __future__ import print_function, division
 import sys
 from datetime import datetime
 from collections import OrderedDict
@@ -17,6 +18,7 @@ class MiesNwb(Experiment):
         self.filename = filename
         self._hdf = None
         self._sweeps = None
+        self._timeseries = None
         self._groups = None
         self._notebook = None
         self.open()
@@ -119,6 +121,45 @@ class MiesNwb(Experiment):
                     meta.append(OrderedDict([(nb_keys[j], (None if np.isnan(tm[j]) else tm[j])) for j in range(len(nb_keys))]))
                 sweep_entries[swid] = meta
 
+            # Load textual keys in a similar way 
+            text_nb_keys = self.hdf['general']['labnotebook'][device]['textualKeys'][0]
+            text_nb_fields = OrderedDict([(k, i) for i,k in enumerate(text_nb_keys)])
+            text_nb = np.array(self.hdf['general']['labnotebook'][device]['textualValues'])
+            entry_source_type_index = text_nb_fields.get('EntrySourceType', None)
+
+            for rec in text_nb:                
+                try:
+                    source_type = int(rec[entry_source_type_index, 0])
+                except ValueError:
+                    # No entry source type recorded here; skip for now.
+                    continue
+
+                if source_type != 0:
+                    # Select only sweep records for now.
+                    continue
+
+                try:
+                    sweep_id = int(rec[0,0])
+                except ValueError:
+                    # Not sure how to handle records with no sweep ID; skip for now.
+                    continue
+                sweep_entry = sweep_entries[sweep_id]
+
+                for k,i in text_nb_fields.items():                    
+                    for j, val in enumerate(rec[i, :-1]):
+                        if k in sweep_entry[j]:
+                            # already have a value here; don't overwrite.
+                            continue
+
+                        if val == '':
+                            # take value from last column if this one is empty
+                            val == rec[i, -1]
+                        if val == '':
+                            # no value here; skip.
+                            continue
+                        
+                        sweep_entry[j][k] = val
+
             self._notebook = sweep_entries
             self._tp_notebook = tp_entries
             self._notebook_keys = nb_fields
@@ -130,11 +171,17 @@ class MiesNwb(Experiment):
         """A list of all sweeps in this file.
         """
         if self._sweeps is None:
-            sweeps = set()
-            for k in self.hdf['acquisition/timeseries'].keys():
-                a, b, c = k.split('_')[:3] #discard anything past AD# channel
-                sweeps.add(b)
-            self._sweeps = [self.create_sync_recording(int(sweep_id)) for sweep_id in sorted(list(sweeps))]
+            # sort all timeseries groups into sweeps / channels
+            self._timeseries = {}
+            for ts_name, ts in self.hdf['acquisition/timeseries'].items():
+                src = dict([field.split('=') for field in ts.attrs['source'].split(';')])
+                sweep = int(src['Sweep'])
+                ad_chan = int(src['AD'])
+                src['hdf_group_name'] = 'acquisition/timeseries/' + ts_name
+                self._timeseries.setdefault(sweep, {})[ad_chan] = src
+            
+            sweep_ids = sorted(list(self._timeseries.keys()))
+            self._sweeps = [self.create_sync_recording(int(sweep_id)) for sweep_id in sweep_ids]
         return self._sweeps
     
     def create_sync_recording(self, sweep_id):
@@ -265,6 +312,7 @@ class MiesRecording(PatchClampRecording):
         self._trace_id = (sweep_id, ad_chan)
         self._inserted_test_pulse = None
         self._nearest_test_pulse = None
+        self._hdf_group_name = sweep._channel_keys[ad_chan]['hdf_group_name']
         self._hdf_group = None
         self._da_chan = None
         headstage_id = int(self.hdf_group['electrode_name'].value[0].split('_')[1])
@@ -281,7 +329,7 @@ class MiesRecording(PatchClampRecording):
         self.meta['holding_current'] = (
             None if nb['I-Clamp Holding Level'] is None
             else nb['I-Clamp Holding Level'] * 1e-12
-        )
+        )   
         self._meta['notebook'] = nb
         if nb['Clamp Mode'] == 0:
             self._meta['clamp_mode'] = 'vc'
@@ -306,15 +354,156 @@ class MiesRecording(PatchClampRecording):
         if stim is None:
             stim_name = self.hdf_group['stimulus_description'].value[0]
             stim = stimuli.Stimulus(description=stim_name)
+            
+            # Add holding offset
+            if self.clamp_mode == 'ic':                
+                units = 'A'
+                stim.append_item(stimuli.Offset(
+                    start_time=0,
+                    amplitude=self.holding_current,
+                    description="holding current",
+                    units=units,
+                ))
+            elif self.clamp_mode == 'vc':
+                units = 'V'
+                stim.append_item(stimuli.Offset(
+                    start_time=0,
+                    amplitude=self.holding_potential,
+                    description="holding potential",
+                    units=units,
+                ))
+            else:
+                units = None
+            
+            # inserted test pulse?
             if self.has_inserted_test_pulse:
                 stim.append_item(self.inserted_test_pulse.stimulus)
+
+            notebook = self._meta['notebook']
+            
+            if 'Stim Wave Note' in notebook:
+                # Stim Wave Note format is explained here: 
+                # https://alleninstitute.github.io/MIES/file/_m_i_e_s___wave_builder_8ipf.html#_CPPv319WB_GetWaveNoteEntry4wave8variable6string8variable8variable
+
+                # read stimulus structure from notebook
+                version, epochs = self._stim_wave_note()
+                assert len(epochs) > 0
+                scale = (1e-3 if self.clamp_mode == 'vc' else 1e-12) * notebook['Stim Scale Factor']
+                t = (notebook['Delay onset oodDAQ'] + notebook['Delay onset user'] + notebook['Delay onset auto']) * 1e-3
+                
+                # if dDAQ is active, add delay from previous channels
+                if notebook['Distributed DAQ'] == 1.0:
+                    ddaq_delay = notebook['Delay distributed DAQ'] * 1e-3
+                    for dev in self.parent.devices:
+                        rec = self.parent[dev]
+                        if rec is self:
+                            break
+                        _, epochs = rec._stim_wave_note()
+                        for ep in epochs:
+                            dt = float(ep.get('Duration', 0)) * 1e-3
+                            t += dt
+                        t += ddaq_delay
+                
+                for epoch in epochs:
+                    if epoch['Epoch'] == 'nan':
+                        # Sweep-specific entry; not sure if we need to do anything with this.
+                        continue
+
+                    stim_type = epoch.get('Type')
+                    duration = float(epoch.get('Duration')) * 1e-3
+                    name = "Epoch %d" % int(epoch['Epoch'])
+                    if stim_type == 'Square pulse':
+                        item = stimuli.SquarePulse(
+                            start_time=t, 
+                            amplitude=float(epoch['Amplitude']) * scale, 
+                            duration=duration, 
+                            description=name,
+                            units=units,
+                        )
+                    elif stim_type == 'Pulse Train':
+                        assert epoch['Poisson distribution'] == 'False', "Poisson distributed pulse train not supported"
+                        assert epoch['Mixed frequency'] == 'False', "Mixed frequency pulse train not supported"
+                        assert epoch['Pulse Type'] == 'Square', "Pulse train with %s pulse type not supported"
+                        item = stimuli.SquarePulseTrain(
+                            start_time=t,
+                            n_pulses=int(epoch['Number of pulses']),
+                            pulse_duration=float(epoch['Pulse duration']) * 1e-3,
+                            amplitude=float(epoch['Amplitude']) * scale,
+                            interval=float(epoch['Pulse To Pulse Length']) * 1e-3,
+                            description=name,
+                            units=units,
+                        )
+                    elif stim_type == 'Sin Wave':
+                        # bug in stim wave note version 2: log chirp field is inverted
+                        is_chirp = epoch['Log chirp'] == ('False' if version <= 2 else 'True')
+                        if is_chirp:
+                            assert epoch['FunctionType'] == 'Sin', "Chirp wave function type %s not supported" % epoch['Function type']
+                            item = stimuli.Chirp(
+                                start_time=t,
+                                start_frequency=float(epoch['Frequency']),
+                                end_frequency=float(epoch['End frequency']),
+                                duration=duration,
+                                amplitude=float(epoch['Amplitude']) * scale,
+                                phase=0,
+                                offset=float(epoch['Offset']) * scale,
+                                description=name,
+                                units=units,
+                            )
+                        else:
+                            if epoch['FunctionType'] == 'Sin':
+                                phase = 0
+                            elif epoch['FunctionType'] == 'Cos':
+                                phase = np.pi / 2.0
+                            else:
+                                raise ValueError("Unsupported sine wave function type: %r" % epoch['FunctionType'])
+                                
+                            item = stimuli.Sine(
+                                start_time=t,
+                                frequency=float(epoch['Frequency']),
+                                duration=duration,
+                                amplitude=float(epoch['Amplitude']) * scale,
+                                phase=phase,
+                                offset=float(epoch['Offset']) * scale,
+                                description=name,
+                                units=units,
+                            )
+                    else:
+                        print(epoch)
+                        print("Warning: unknown stimulus type %s in %s sweep %s" % (stim_type, self._nwb, self._trace_id))
+                        item = None
+                
+                    t += duration
+                    if item is not None:
+                        stim.append_item(item)
+
             self._meta['stimulus'] = stim
         return stim
+
+    def _stim_wave_note(self):
+        """Return version and epochs from stim wave note
+        """
+        notebook = self._meta['notebook']
+        sweep_count = int(notebook['Set Sweep Count'])
+        wave_note = notebook['Stim Wave Note']
+        lines = wave_note.split('\n')
+        version = [line for line in lines if line.startswith('Version =')]
+        if len(version) == 0:
+            version = 0
+        else:
+            version = float(version[0].rstrip(';').split(' = ')[1])
+        epochs = []
+        for line in lines:
+            if not line.startswith('Sweep = %d;' % sweep_count):
+                continue
+            epoch = dict([part.split(' = ') for part in line.split(';') if '=' in part])
+            epochs.append(epoch)
+            
+        return version, epochs
 
     @property
     def hdf_group(self):
         if self._hdf_group is None:
-            self._hdf_group = self._nwb.hdf['acquisition/timeseries/data_%05d_AD%d' % self._trace_id]
+            self._hdf_group = self._nwb.hdf[self._hdf_group_name]
         return self._hdf_group
 
     @property
@@ -520,18 +709,15 @@ class MiesSyncRecording(SyncRecording):
         self._notebook_entry = None
 
         # get list of all A/D channels in this sweep
-        chans = []
-        for k in self._nwb.hdf['acquisition/timeseries'].keys():
-            if not k.startswith('data_%05d_' % sweep_id):
-                continue
-            chans.append(int(k.split('_')[2][2:]))
-        self._ad_channels = sorted(chans)
+        self._channel_keys = self._nwb._timeseries.get(sweep_id, {})
+        self._ad_channels = sorted(list(self._channel_keys.keys()))
         
         devs = OrderedDict()
 
         for ch in self._ad_channels:
             # there is a very rare/specific acquisition bug that we want to be able to ignore here:
             try:
+                hdf_group_name = self._channel_keys[ch]['hdf_group_name']
                 rec = self.create_recording(sweep_id, ch)
             except Exception as exc:
                 if hasattr(exc, '_ignorable_bug_flag'):
