@@ -404,73 +404,76 @@ class MiesRecording(PatchClampRecording):
                             t += dt
                         t += ddaq_delay
                 
-                for epoch in epochs:
-                    if epoch['Epoch'] == 'nan':
-                        # Sweep-specific entry; not sure if we need to do anything with this.
-                        continue
+                for epoch_n,epoch in enumerate(epochs):
+                    try:
+                        if epoch['Epoch'] == 'nan':
+                            # Sweep-specific entry; not sure if we need to do anything with this.
+                            continue
 
-                    stim_type = epoch.get('Type')
-                    duration = float(epoch.get('Duration')) * 1e-3
-                    name = "Epoch %d" % int(epoch['Epoch'])
-                    if stim_type == 'Square pulse':
-                        item = stimuli.SquarePulse(
-                            start_time=t, 
-                            amplitude=float(epoch['Amplitude']) * scale, 
-                            duration=duration, 
-                            description=name,
-                            units=units,
-                        )
-                    elif stim_type == 'Pulse Train':
-                        assert epoch['Poisson distribution'] == 'False', "Poisson distributed pulse train not supported"
-                        assert epoch['Mixed frequency'] == 'False', "Mixed frequency pulse train not supported"
-                        assert epoch['Pulse Type'] == 'Square', "Pulse train with %s pulse type not supported"
-                        item = stimuli.SquarePulseTrain(
-                            start_time=t,
-                            n_pulses=int(epoch['Number of pulses']),
-                            pulse_duration=float(epoch['Pulse duration']) * 1e-3,
-                            amplitude=float(epoch['Amplitude']) * scale,
-                            interval=float(epoch['Pulse To Pulse Length']) * 1e-3,
-                            description=name,
-                            units=units,
-                        )
-                    elif stim_type == 'Sin Wave':
-                        # bug in stim wave note version 2: log chirp field is inverted
-                        is_chirp = epoch['Log chirp'] == ('False' if version <= 2 else 'True')
-                        if is_chirp:
-                            assert epoch['FunctionType'] == 'Sin', "Chirp wave function type %s not supported" % epoch['Function type']
-                            item = stimuli.Chirp(
-                                start_time=t,
-                                start_frequency=float(epoch['Frequency']),
-                                end_frequency=float(epoch['End frequency']),
-                                duration=duration,
-                                amplitude=float(epoch['Amplitude']) * scale,
-                                phase=0,
-                                offset=float(epoch['Offset']) * scale,
+                        stim_type = epoch.get('Type')
+                        duration = float(epoch.get('Duration', 0)) * 1e-3
+                        name = "Epoch %d" % int(epoch['Epoch'])
+                        if stim_type == 'Square pulse':
+                            item = stimuli.SquarePulse(
+                                start_time=t, 
+                                amplitude=float(epoch['Amplitude']) * scale, 
+                                duration=duration, 
                                 description=name,
                                 units=units,
                             )
-                        else:
-                            if epoch['FunctionType'] == 'Sin':
-                                phase = 0
-                            elif epoch['FunctionType'] == 'Cos':
-                                phase = np.pi / 2.0
+                        elif stim_type == 'Pulse Train':
+                            assert epoch['Poisson distribution'] == 'False', "Poisson distributed pulse train not supported"
+                            assert epoch['Mixed frequency'] == 'False', "Mixed frequency pulse train not supported"
+                            assert epoch['Pulse Type'] == 'Square', "Pulse train with %s pulse type not supported"
+                            item = stimuli.SquarePulseTrain(
+                                start_time=t,
+                                n_pulses=int(epoch['Number of pulses']),
+                                pulse_duration=float(epoch['Pulse duration']) * 1e-3,
+                                amplitude=float(epoch['Amplitude']) * scale,
+                                interval=float(epoch['Pulse To Pulse Length']) * 1e-3,
+                                description=name,
+                                units=units,
+                            )
+                        elif stim_type == 'Sin Wave':
+                            # bug in stim wave note version 2: log chirp field is inverted
+                            is_chirp = epoch['Log chirp'] == ('False' if version <= 2 else 'True')
+                            if is_chirp:
+                                assert epoch['FunctionType'] == 'Sin', "Chirp wave function type %s not supported" % epoch['Function type']
+                                item = stimuli.Chirp(
+                                    start_time=t,
+                                    start_frequency=float(epoch['Frequency']),
+                                    end_frequency=float(epoch['End frequency']),
+                                    duration=duration,
+                                    amplitude=float(epoch['Amplitude']) * scale,
+                                    phase=0,
+                                    offset=float(epoch['Offset']) * scale,
+                                    description=name,
+                                    units=units,
+                                )
                             else:
-                                raise ValueError("Unsupported sine wave function type: %r" % epoch['FunctionType'])
-                                
-                            item = stimuli.Sine(
-                                start_time=t,
-                                frequency=float(epoch['Frequency']),
-                                duration=duration,
-                                amplitude=float(epoch['Amplitude']) * scale,
-                                phase=phase,
-                                offset=float(epoch['Offset']) * scale,
-                                description=name,
-                                units=units,
-                            )
-                    else:
-                        print(epoch)
-                        print("Warning: unknown stimulus type %s in %s sweep %s" % (stim_type, self._nwb, self._trace_id))
-                        item = None
+                                if epoch['FunctionType'] == 'Sin':
+                                    phase = 0
+                                elif epoch['FunctionType'] == 'Cos':
+                                    phase = np.pi / 2.0
+                                else:
+                                    raise ValueError("Unsupported sine wave function type: %r" % epoch['FunctionType'])
+                                    
+                                item = stimuli.Sine(
+                                    start_time=t,
+                                    frequency=float(epoch['Frequency']),
+                                    duration=duration,
+                                    amplitude=float(epoch['Amplitude']) * scale,
+                                    phase=phase,
+                                    offset=float(epoch['Offset']) * scale,
+                                    description=name,
+                                    units=units,
+                                )
+                        else:
+                            print(epoch)
+                            print("Warning: unknown stimulus type %s in %s sweep %s" % (stim_type, self._nwb, self._trace_id))
+                            item = None
+                    except Exception as exc:
+                        print("Warning: error reading stimulus epoch %d in %s sweep %s: %s" % (epoch_n, self._nwb, self._trace_id, str(exc)))
                 
                     t += duration
                     if item is not None:
