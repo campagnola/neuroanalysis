@@ -1237,18 +1237,28 @@ class TraceList(object):
     def mean(self):
         """Return a trace with data averaged from all traces in this group.
 
-        Downsamples to the minimum rate and clips ragged edges.
+        Downsamples to the minimum rate and clips ragged edges. All traces are aligned
+        based on their _time values_ before being clipped and averaged. 
         """
+        # Downsample all traces to the minimum sample rate
         min_sr = min([trace.sample_rate for trace in self.traces])
         downsampled = [trace.resample(min_sr) for trace in self.traces]
-        start_t = max([trace.t0 for trace in downsampled])
-        stop_t = min([trace.time_values[-1] for trace in downsampled])
-        array = []
-        for trace in downsampled:
-            clip_trace = trace.time_slice(start_t, stop_t)
-            array.append(clip_trace.data)
-        avg = np.nanmean(np.vstack(array), axis=0)
         
+        # left-clip all traces to start at the same time
+        start_t = max([trace.t0 for trace in downsampled])
+        start_inds = [(trace, trace.index_at(start_t)) for trace in downsampled]
+        
+        # right-clip all traces to the same length
+        clip_len = min([len(trace) - start_ind for trace, start_ind in start_inds])
+        
+        # stack together all cropped arrays
+        clipped_data = [trace.data[start_ind:start_ind+clip_len] for trace, start_ind in start_inds]
+        
+        # average all traces together
+        avg = np.nanmean(np.vstack(clipped_data), axis=0)
+        
+        # return a trace with the average data and all other properties taken from the
+        # first downsampled trace
         return downsampled[0].copy(data=avg, t0=start_t, sample_rate=min_sr, dt=None)
 
 
