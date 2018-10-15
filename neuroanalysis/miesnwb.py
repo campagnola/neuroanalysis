@@ -127,12 +127,16 @@ class MiesNwb(Experiment):
             text_nb = np.array(self.hdf['general']['labnotebook'][device]['textualValues'])
             entry_source_type_index = text_nb_fields.get('EntrySourceType', None)
 
-            for rec in text_nb:                
-                try:
-                    source_type = int(rec[entry_source_type_index, 0])
-                except ValueError:
-                    # No entry source type recorded here; skip for now.
-                    continue
+            for rec in text_nb:
+                if entry_source_type_index is None:
+                    # older nwb files lack EntrySourceType; fake it for now
+                    source_type = 0
+                else:
+                    try:
+                        source_type = int(rec[entry_source_type_index, 0])
+                    except ValueError:
+                        # No entry source type recorded here; skip for now.
+                        continue
 
                 if source_type != 0:
                     # Select only sweep records for now.
