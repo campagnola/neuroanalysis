@@ -568,11 +568,10 @@ class MiesRecording(PatchClampRecording):
                 return None
             
             # get start/stop indices of the test pulse region
-            pdur = self.meta['notebook']['TP Pulse Duration'] / 1000.
-            bdur = pdur / (1.0 - 2. * self.meta['notebook']['TP Baseline Fraction'])
-            tdur = pdur + 2 * bdur
+            pulse_dur = self.meta['notebook']['TP Pulse Duration'] / 1000.
+            total_dur = pulse_dur / (1.0 - 2. * self.meta['notebook']['TP Baseline Fraction'])
             start = 0
-            stop = start + int(tdur / self['primary'].dt)
+            stop = start + int(total_dur / self['primary'].dt)
             
             tp = PatchClampTestPulse(self, indices=(start, stop))
             
