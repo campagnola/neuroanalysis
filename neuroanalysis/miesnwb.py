@@ -356,133 +356,7 @@ class MiesRecording(PatchClampRecording):
     def stimulus(self):
         stim = self._meta.get('stimulus', None)
         if stim is None:
-            stim_name = self.hdf_group['stimulus_description'].value[0]
-            stim = stimuli.Stimulus(description=stim_name)
-            
-            # Add holding offset
-            if self.clamp_mode == 'ic':                
-                units = 'A'
-                stim.append_item(stimuli.Offset(
-                    start_time=0,
-                    amplitude=self.holding_current,
-                    description="holding current",
-                    units=units,
-                ))
-            elif self.clamp_mode == 'vc':
-                units = 'V'
-                stim.append_item(stimuli.Offset(
-                    start_time=0,
-                    amplitude=self.holding_potential,
-                    description="holding potential",
-                    units=units,
-                ))
-            else:
-                units = None
-            
-            # inserted test pulse?
-            if self.has_inserted_test_pulse:
-                stim.append_item(self.inserted_test_pulse.stimulus)
-
-            notebook = self._meta['notebook']
-            
-            if 'Stim Wave Note' in notebook:
-                # Stim Wave Note format is explained here: 
-                # https://alleninstitute.github.io/MIES/file/_m_i_e_s___wave_builder_8ipf.html#_CPPv319WB_GetWaveNoteEntry4wave8variable6string8variable8variable
-
-                # read stimulus structure from notebook
-                version, epochs = self._stim_wave_note()
-                assert len(epochs) > 0
-                scale = (1e-3 if self.clamp_mode == 'vc' else 1e-12) * notebook['Stim Scale Factor']
-                t = (notebook['Delay onset oodDAQ'] + notebook['Delay onset user'] + notebook['Delay onset auto']) * 1e-3
-                
-                # if dDAQ is active, add delay from previous channels
-                if notebook['Distributed DAQ'] == 1.0:
-                    ddaq_delay = notebook['Delay distributed DAQ'] * 1e-3
-                    for dev in self.parent.devices:
-                        rec = self.parent[dev]
-                        if rec is self:
-                            break
-                        _, epochs = rec._stim_wave_note()
-                        for ep in epochs:
-                            dt = float(ep.get('Duration', 0)) * 1e-3
-                            t += dt
-                        t += ddaq_delay
-                
-                for epoch_n,epoch in enumerate(epochs):
-                    try:
-                        if epoch['Epoch'] == 'nan':
-                            # Sweep-specific entry; not sure if we need to do anything with this.
-                            continue
-
-                        stim_type = epoch.get('Type')
-                        duration = float(epoch.get('Duration', 0)) * 1e-3
-                        name = "Epoch %d" % int(epoch['Epoch'])
-                        if stim_type == 'Square pulse':
-                            item = stimuli.SquarePulse(
-                                start_time=t, 
-                                amplitude=float(epoch['Amplitude']) * scale, 
-                                duration=duration, 
-                                description=name,
-                                units=units,
-                            )
-                        elif stim_type == 'Pulse Train':
-                            assert epoch['Poisson distribution'] == 'False', "Poisson distributed pulse train not supported"
-                            assert epoch['Mixed frequency'] == 'False', "Mixed frequency pulse train not supported"
-                            assert epoch['Pulse Type'] == 'Square', "Pulse train with %s pulse type not supported"
-                            item = stimuli.SquarePulseTrain(
-                                start_time=t,
-                                n_pulses=int(epoch['Number of pulses']),
-                                pulse_duration=float(epoch['Pulse duration']) * 1e-3,
-                                amplitude=float(epoch['Amplitude']) * scale,
-                                interval=float(epoch['Pulse To Pulse Length']) * 1e-3,
-                                description=name,
-                                units=units,
-                            )
-                        elif stim_type == 'Sin Wave':
-                            # bug in stim wave note version 2: log chirp field is inverted
-                            is_chirp = epoch['Log chirp'] == ('False' if version <= 2 else 'True')
-                            if is_chirp:
-                                assert epoch['FunctionType'] == 'Sin', "Chirp wave function type %s not supported" % epoch['Function type']
-                                item = stimuli.Chirp(
-                                    start_time=t,
-                                    start_frequency=float(epoch['Frequency']),
-                                    end_frequency=float(epoch['End frequency']),
-                                    duration=duration,
-                                    amplitude=float(epoch['Amplitude']) * scale,
-                                    phase=0,
-                                    offset=float(epoch['Offset']) * scale,
-                                    description=name,
-                                    units=units,
-                                )
-                            else:
-                                if epoch['FunctionType'] == 'Sin':
-                                    phase = 0
-                                elif epoch['FunctionType'] == 'Cos':
-                                    phase = np.pi / 2.0
-                                else:
-                                    raise ValueError("Unsupported sine wave function type: %r" % epoch['FunctionType'])
-                                    
-                                item = stimuli.Sine(
-                                    start_time=t,
-                                    frequency=float(epoch['Frequency']),
-                                    duration=duration,
-                                    amplitude=float(epoch['Amplitude']) * scale,
-                                    phase=phase,
-                                    offset=float(epoch['Offset']) * scale,
-                                    description=name,
-                                    units=units,
-                                )
-                        else:
-                            print(epoch)
-                            print("Warning: unknown stimulus type %s in %s sweep %s" % (stim_type, self._nwb, self._trace_id))
-                            item = None
-                    except Exception as exc:
-                        print("Warning: error reading stimulus epoch %d in %s sweep %s: %s" % (epoch_n, self._nwb, self._trace_id, str(exc)))
-                
-                    t += duration
-                    if item is not None:
-                        stim.append_item(item)
-
+            stim = MiesStimulus(self)
             self._meta['stimulus'] = stim
         return stim
 
@@ -749,3 +623,147 @@ class MiesSyncRecording(SyncRecording):
     @property
     def parent(self):
         return self._nwb
+
+
+class MiesStimulus(stimuli.Stimulus):
+    """Stimulus that generates its children by parsing a MIES wavenote
+    """
+    def __init__(self, recording):
+        self._recording = recording
+        stim_name = recording.hdf_group['stimulus_description'].value[0]
+        stimuli.Stimulus.__init__(self, description=stim_name)
+        self._items = None
+
+    @property
+    def items(self):
+        if self._items is None:
+            self._items = []
+            self._parse_wavenote()
+        return tuple(self._items)
+    
+    def _parse_wavenote(self):
+        rec = self._recording
+        
+        # Add holding offset
+        if rec.clamp_mode == 'ic':                
+            units = 'A'
+            self.append_item(stimuli.Offset(
+                start_time=0,
+                amplitude=rec.holding_current,
+                description="holding current",
+                units=units,
+            ))
+        elif rec.clamp_mode == 'vc':
+            units = 'V'
+            self.append_item(stimuli.Offset(
+                start_time=0,
+                amplitude=rec.holding_potential,
+                description="holding potential",
+                units=units,
+            ))
+        else:
+            units = None
+        
+        # inserted test pulse?
+        if rec.has_inserted_test_pulse:
+            self.append_item(rec.inserted_test_pulse.stimulus)
+
+        notebook = rec._meta['notebook']
+        
+        if 'Stim Wave Note' in notebook:
+            # Stim Wave Note format is explained here: 
+            # https://alleninstitute.github.io/MIES/file/_m_i_e_s___wave_builder_8ipf.html#_CPPv319WB_GetWaveNoteEntry4wave8variable6string8variable8variable
+
+            # read stimulus structure from notebook
+            version, epochs = rec._stim_wave_note()
+            assert len(epochs) > 0
+            scale = (1e-3 if rec.clamp_mode == 'vc' else 1e-12) * notebook['Stim Scale Factor']
+            t = (notebook['Delay onset oodDAQ'] + notebook['Delay onset user'] + notebook['Delay onset auto']) * 1e-3
+            
+            # if dDAQ is active, add delay from previous channels
+            if notebook['Distributed DAQ'] == 1.0:
+                ddaq_delay = notebook['Delay distributed DAQ'] * 1e-3
+                for dev in rec.parent.devices:
+                    rec = rec.parent[dev]
+                    if rec is self:
+                        break
+                    _, epochs = rec._stim_wave_note()
+                    for ep in epochs:
+                        dt = float(ep.get('Duration', 0)) * 1e-3
+                        t += dt
+                    t += ddaq_delay
+            
+            for epoch_n,epoch in enumerate(epochs):
+                try:
+                    if epoch['Epoch'] == 'nan':
+                        # Sweep-specific entry; not sure if we need to do anything with this.
+                        continue
+
+                    stim_type = epoch.get('Type')
+                    duration = float(epoch.get('Duration', 0)) * 1e-3
+                    name = "Epoch %d" % int(epoch['Epoch'])
+                    if stim_type == 'Square pulse':
+                        item = stimuli.SquarePulse(
+                            start_time=t, 
+                            amplitude=float(epoch['Amplitude']) * scale, 
+                            duration=duration, 
+                            description=name,
+                            units=units,
+                        )
+                    elif stim_type == 'Pulse Train':
+                        assert epoch['Poisson distribution'] == 'False', "Poisson distributed pulse train not supported"
+                        assert epoch['Mixed frequency'] == 'False', "Mixed frequency pulse train not supported"
+                        assert epoch['Pulse Type'] == 'Square', "Pulse train with %s pulse type not supported"
+                        item = stimuli.SquarePulseTrain(
+                            start_time=t,
+                            n_pulses=int(epoch['Number of pulses']),
+                            pulse_duration=float(epoch['Pulse duration']) * 1e-3,
+                            amplitude=float(epoch['Amplitude']) * scale,
+                            interval=float(epoch['Pulse To Pulse Length']) * 1e-3,
+                            description=name,
+                            units=units,
+                        )
+                    elif stim_type == 'Sin Wave':
+                        # bug in stim wave note version 2: log chirp field is inverted
+                        is_chirp = epoch['Log chirp'] == ('False' if version <= 2 else 'True')
+                        if is_chirp:
+                            assert epoch['FunctionType'] == 'Sin', "Chirp wave function type %s not supported" % epoch['Function type']
+                            item = stimuli.Chirp(
+                                start_time=t,
+                                start_frequency=float(epoch['Frequency']),
+                                end_frequency=float(epoch['End frequency']),
+                                duration=duration,
+                                amplitude=float(epoch['Amplitude']) * scale,
+                                phase=0,
+                                offset=float(epoch['Offset']) * scale,
+                                description=name,
+                                units=units,
+                            )
+                        else:
+                            if epoch['FunctionType'] == 'Sin':
+                                phase = 0
+                            elif epoch['FunctionType'] == 'Cos':
+                                phase = np.pi / 2.0
+                            else:
+                                raise ValueError("Unsupported sine wave function type: %r" % epoch['FunctionType'])
+                                
+                            item = stimuli.Sine(
+                                start_time=t,
+                                frequency=float(epoch['Frequency']),
+                                duration=duration,
+                                amplitude=float(epoch['Amplitude']) * scale,
+                                phase=phase,
+                                offset=float(epoch['Offset']) * scale,
+                                description=name,
+                                units=units,
+                            )
+                    else:
+                        print(epoch)
+                        print("Warning: unknown stimulus type %s in %s sweep %s" % (stim_type, rec._nwb, rec._trace_id))
+                        item = None
+                except Exception as exc:
+                    print("Warning: error reading stimulus epoch %d in %s sweep %s: %s" % (epoch_n, rec._nwb, rec._trace_id, str(exc)))
+            
+                t += duration
+                if item is not None:
+                    self.append_item(item)
