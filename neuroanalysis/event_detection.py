@@ -333,6 +333,11 @@ def clements_bekkers(data, template):
 
 
 def exp_deconvolve(trace, tau):
+    """Exponential deconvolution used to isolate overlapping events; works nicely on PSPs, calcium transients, etc.
+
+    See: Richardson & Silberberg 2008, "Measurement and Analysis of Postsynaptic Potentials Using 
+         a Novel Voltage-Deconvolution Method"
+    """
     dt = trace.dt
     arr = trace.data
     deconv = arr[:-1] + (tau / dt) * (arr[1:] - arr[:-1])
