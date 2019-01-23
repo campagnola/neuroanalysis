@@ -140,6 +140,8 @@ def check_timing(tr, data, time_values, has_timing, has_time_values, regularly_s
     assert tr.has_time_values is has_time_values
     assert tr.regularly_sampled is regularly_sampled
 
+    assert tr.t_end == tr.time_values[-1]
+
     # test scalar argument for index_at, time_at, and value_at
     index = 5
     assert tr.value_at(time_values[index]) == tr.data[index]
