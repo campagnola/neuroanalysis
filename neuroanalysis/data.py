@@ -741,7 +741,7 @@ class Trace(Container):
     def t_end(self):
         """The last time value in this Trace.
         """
-        return self.time_at(-1)
+        return self.time_at(len(self) - 1)
 
     def time_at(self, index):
         """Return the time at a specified index(es).

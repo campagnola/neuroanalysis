@@ -685,7 +685,7 @@ class MiesStimulus(stimuli.Stimulus):
                 ddaq_delay = notebook['Delay distributed DAQ'] * 1e-3
                 for dev in rec.parent.devices:
                     rec = rec.parent[dev]
-                    if rec is self:
+                    if rec is self._recording:
                         break
                     _, epochs = rec._stim_wave_note()
                     for ep in epochs:
