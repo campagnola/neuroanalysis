@@ -1,8 +1,12 @@
 from __future__ import division, print_function
 import numpy as np
 from scipy.ndimage import gaussian_filter
+from scipy.optimize import curve_fit
+import matplotlib.pyplot as plt
 
 from .data import Trace, PatchClampRecording
+from .filter import bessel_filter
+from .baseline import mode_filter, adaptive_detrend
 
 
 def detect_evoked_spike(data, pulse_edges, **kwds):
@@ -13,8 +17,8 @@ def detect_evoked_spike(data, pulse_edges, **kwds):
     data : PatchClampRecording
         The recorded patch clamp data. The recording should be made with a brief pulse intended
         to evoke a single spike with short latency.
-    pulse_edges : (int, int)
-        The start and end indices of the stimulation pulse. 
+    pulse_edges : (float, float)
+        The start and end times (seconds relative to the timing specified in the recording) of the stimulation pulse. 
     """
     trace = data['primary']
     if data.clamp_mode == 'vc':
@@ -25,34 +29,113 @@ def detect_evoked_spike(data, pulse_edges, **kwds):
         raise ValueError("Unsupported clamp mode %s" % trace.clamp_mode)
 
 
-def detect_ic_evoked_spike(trace, pulse_edges, threshold=-10e-3, duration=3e-3, max_dvdt_search=1e-3):
+def rc_decay(t, tau, Vo): 
+    """function describing the deriviative of the voltage.  If there
+    is no spike one would expect this to fall off as the RC of the cell. """
+    return -(Vo/tau)*np.exp(-t/tau)
+
+
+def detect_ic_evoked_spike(trace, pulse_edges, dvdt_threshold=0.0013, mse_threshold=80.):
+
     assert trace.data.ndim == 1
-    pulse_edges = tuple(map(int, pulse_edges))  # make sure pulse_edges is (int, int)
+#    trace = bessel_filter(trace, 20e3)
+#    trace = trace.resample(sample_rate=20000)
+    pulse_edges = tuple(map(float, pulse_edges))  # make sure pulse_edges is (float, float)
     
     dt = trace.dt
-    w = int(duration / dt)
-    pstart, pstop = pulse_edges
-    chunk = trace.data[pstart:pstart+w]
-    
-    peak_ind = np.argmax(chunk)
-    peak_val = chunk[peak_ind]
-    if peak_val < threshold:
-        # trace did not cross threshold; no spike here
-        return None
-    if peak_ind < 3:
-        # peak find failed--this can happen when all samples in
-        # the chunk have the same value
-        return None
+    pstart, pstop = trace.index_at(pulse_edges[0]), trace.index_at(pulse_edges[1])
+    # get indicies for a window within the pulse to look in (note these are not index of the pulse)
+    pulse_window_start = pstart + int(.0003 / dt)
+    pulse_window_end = pstop - int(.00005 / dt)
 
-    # In some rare cases, the stimulus causes a very high dvdt at the beginning of the pulse.
-    # We catch this by only searching for max dvdt within a certain window of the peak.
-    maxdvdt_start_index = max(0, peak_ind - int(max_dvdt_search / dt))
-    dvdt = np.diff(chunk[maxdvdt_start_index:peak_ind])
-    rise_ind = np.argmax(dvdt)
-    max_dvdt = dvdt[rise_ind]
+    # derivatives of entire trace
+    dvdt = np.diff(trace.data)
+    d2vdt2 = np.diff(dvdt)
+    #d2vdt2 = adaptive_detrend(d2vdt2, window=(pulse_window_start, pulse_window_end))
+
+    plt.figure()
+    plt.plot(dvdt, 'r')
+
+    # mask out pulse termination artifact
+    index_mask = int(np.round(2.e-5/dt))
+    dvdt[(pstop-index_mask+1) : (pstop+index_mask+1)] = np.nan
+
+
+    plt.plot(dvdt, 'b')
+
+
+    chunk = d2vdt2[pulse_window_start:pulse_window_end]
+    max_d2vdt2_idx = np.argmax(chunk) + pulse_window_start
+    d2vdt2_threshold = np.std(chunk)*2.
+
+    if d2vdt2[max_d2vdt2_idx] > d2vdt2_threshold:
+        #find max dvdt nearby
+        max_dvdt_index = np.argmax(dvdt[max_d2vdt2_idx : max_d2vdt2_idx + int(35.e-5 / dt)]) + max_d2vdt2_idx 
+
+        # if d2vdt2 crosses threshold make sure the dvdt crosses it's threshold
+        if dvdt[max_dvdt_index] > dvdt_threshold:
+            spike_index = max_dvdt_index + 1 #+1 due to translating dvdt time to v time (off by 1)
+        else:
+            spike_index = None
+    else:
+        spike_index = None
     
-    return {'peak_index': peak_ind + pstart, 'rise_index': rise_ind + pstart + maxdvdt_start_index,
-            'peak_val': peak_val, 'max_dvdt': max_dvdt}
+
+    #if no spike was found in the pulse region check to see if there is a spike in the pulse termination region
+    if spike_index is None:
+        #note that this is using the dvdt with the termination artifact in it to locate where it should start 
+        chunk = trace.data[pstop : pstop + int(.0005 / dt)]
+        
+        # #find location of minimum dv/dt
+        min_dvdt_idx = np.argmin(np.diff(chunk)) + pstop  #global minimum index
+    
+        # create a vector to fit
+        dvtofit=np.diff(trace.data)[min_dvdt_idx + 1:] #+1 here to get rid of actual artifact, 
+        ttofit=trace.time_values[(min_dvdt_idx + 1 + 1):] - trace.time_values[(min_dvdt_idx + 1 + 1)] # setting time to start at zero, note: +1 because time trace of derivative needs to be one shorter
+
+        # do fit and see if it matches
+        popt, pcov = curve_fit(rc_decay, ttofit, dvtofit, maxfev=10000)
+        fit = rc_decay(ttofit, *popt)
+        mse = (np.sum((dvtofit-fit)**2))/len(fit)*1e10 #mean squared error
+        plt.figure()
+        plt.plot(ttofit, dvtofit, 'r')
+        plt.plot(ttofit, fit, 'k--', label=('mse: %f' % (mse)))
+        plt.legend()   
+        if mse > mse_threshold:
+            # note this is looking for the max of the data with the termination artifact removed.
+            max_dvdt_idx = np.argmax(dvdt[pulse_window_end : pulse_window_end + int(3./dt)]) + pulse_window_end  #TODO: potential problem if this goes past end of trace
+            spike_index = max_dvdt_idx   
+        else:
+            spike_index =  None
+
+    plt.figure(figsize =  (10, 8))
+    voltage= trace.data
+    time_ms = trace.time_values*1.e3
+    ax1=plt.subplot(111)
+    ax1.plot(time_ms, voltage)
+    ax2=ax1.twinx()
+    ax2.plot(time_ms[1:], dvdt, color='r')
+    ax2.plot(time_ms[2:], d2vdt2, color='g')
+    ax2.plot([time_ms[pulse_window_start],time_ms[pulse_window_end]], [d2vdt2_threshold, d2vdt2_threshold], '--k', lw=.5)    
+    plt.axvspan(time_ms[pulse_window_start],time_ms[pulse_window_end], color='k', alpha=.3 )
+    if spike_index:
+        plt.axvline(time_ms[spike_index], color='k')
+    plt.xlabel('ms')
+    plt.title('dt '+str(trace.dt))
+    plt.show()
+
+
+
+    # find voltage peak within 1 ms after spike initiation
+    if spike_index:
+        chunk = trace.data[spike_index: (spike_index +  int(.001 / dt))]
+        peak_idx =  np.argmax(chunk) + spike_index    
+        return {'peak_time': trace.time_at(peak_idx), 'max_dvdt_time': trace.time_at(spike_index),
+            'peak_val': trace.data[peak_idx], 'max_dvdt': trace.data[spike_index]}
+    else:
+        return None
+    
+
 
 
 def detect_vc_evoked_spike(trace, pulse_edges, sigma=20e-6, delay=150e-6, threshold=50e-12):
