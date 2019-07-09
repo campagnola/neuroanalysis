@@ -99,7 +99,7 @@ def zero_crossing_events(data, min_length=3, min_peak=0.0, min_sum=0.0, noise_th
     return events
 
 
-def threshold_events(trace, threshold, adjust_times=True, baseline=0.0):
+def threshold_events(trace, threshold, adjust_times=True, baseline=0.0, omit_ends=True):
     """
     Finds regions in a trace that cross a threshold value (as measured by distance from baseline). Returns the index, length, peak, and sum of each event.
     Optionally adjusts index to an extrapolated baseline-crossing.
@@ -114,17 +114,25 @@ def threshold_events(trace, threshold, adjust_times=True, baseline=0.0):
     hits = []
     for mask in masks:
         diff = mask[1:] - mask[:-1]
-        on_inds = np.argwhere(diff==1)[:,0] + 1
-        off_inds = np.argwhere(diff==-1)[:,0] + 1
+        on_inds = list(np.argwhere(diff==1)[:,0] + 1)
+        off_inds = list(np.argwhere(diff==-1)[:,0] + 1)
         if len(on_inds) == 0 or len(off_inds) == 0:
             continue
         if off_inds[0] < on_inds[0]:
-            off_inds = off_inds[1:]
-            if len(off_inds) == 0:
-                continue
+            if omit_ends:
+                off_inds = off_inds[1:]
+                if len(off_inds) == 0:
+                    continue
+            else:
+                on_inds.insert(0, 0)
         if off_inds[-1] < on_inds[-1]:
-            on_inds = on_inds[:-1]
+            if omit_ends:
+                on_inds = on_inds[:-1]
+            else:
+                off_inds.append(len(diff))
         for i in range(len(on_inds)):
+            if on_inds[i] == off_inds[i]:
+                continue
             hits.append((on_inds[i], off_inds[i]))
     
     ## sort hits  ## NOTE: this can be sped up since we already know how to interleave the events..
