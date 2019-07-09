@@ -353,11 +353,11 @@ class Recording(Container):
     def sync_recording(self):
         return self._sync_recording
 
+    def time_slice(self, start, stop):
+        return RecordingView(self, start, stop)
+
     def __getitem__(self, chan):
-        if isinstance(chan, slice):
-            return RecordingView(self, chan)
-        else:
-            return self._channels[chan]
+        return self._channels[chan]
 
     def data(self):
         return np.concatenate([self[ch].data[:,None] for ch in self.channels], axis=1)
@@ -374,9 +374,9 @@ class Recording(Container):
 class RecordingView(Recording):
     """A time-slice of a multi channel recording
     """
-    def __init__(self, rec, sl):
+    def __init__(self, rec, start, stop):
         self._parent_rec = rec
-        self._view_slice = sl
+        self._view_slice = (start, stop)
         chans = OrderedDict([(k, rec[k]) for k in rec.channels])
         Recording.__init__(self, 
             channels=chans, start_time=rec.start_time, device_type=rec.device_type,
@@ -386,24 +386,24 @@ class RecordingView(Recording):
         return getattr(self._parent_rec, attr)
 
     def __getitem__(self, item):
-        return self._parent_rec[item][self._view_slice]
+        return self._parent_rec[item].time_slice(*self._view_slice)
 
     @property
     def parent(self):
         return self._parent_rec
 
-    @property
-    def source_indices(self):
-        """Return the indices of this view on the original Recording.
-        """
-        v = self
-        start = 0
-        while True:
-            start += self._view_slice.start
-            v = v.parent
-            if not isinstance(v, RecordingView):
-                break
-        return start, start + len(self)
+    # @property
+    # def source_indices(self):
+    #     """Return the indices of this view on the original Recording.
+    #     """
+    #     v = self
+    #     start = 0
+    #     while True:
+    #         start += self._view_slice.start
+    #         v = v.parent
+    #         if not isinstance(v, RecordingView):
+    #             break
+    #     return start, start + len(self)
 
 
 class PatchClampRecording(Recording):
@@ -1121,25 +1121,42 @@ class Trace(Container):
         return self.copy(data=self.data - x)
 
     def mean(self):
-        """Mean value of the data in this Trace.
+        """Return the mean value of the data in this Trace.
 
         Equivalent to self.data.mean()
         """
         return self.data.mean()
 
     def std(self):
-        """Standard deviation of the data in this Trace.
+        """Return the standard deviation of the data in this Trace.
 
         Equivalent to self.data.std()
         """
         return self.data.std()
 
     def median(self):
-        """Median value of the data in this Trace.
+        """Return the median value of the data in this Trace.
 
         Equivalent to np.median(self.data)
         """
         return np.median(self.data)
+        
+    def diff(self):
+        """Return the derivative of values in this trace with respect to its timebase.
+        
+        Note that the returned trace values are sampled half way between the time
+        values of the input trace.
+        """
+        diff = np.diff(self.data)
+        if self.has_time_values:
+            dt = np.diff(self.time_values)
+            t = self.time_values[:-1] + (0.5 * dt)
+            dvdt = diff / dt
+            return Trace(data=dvdt, time_values=t)
+        else:
+            t0 = self.t0 + (0.5*self.dt)
+            dvdt = diff / self.dt
+            return Trace(data=dvdt, t0=t0, dt=self.meta['dt'], sample_rate=self.meta['sample_rate'])
     
     def __repr__(self):
         if self.has_timing:
