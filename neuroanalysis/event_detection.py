@@ -99,169 +99,150 @@ def zero_crossing_events(data, min_length=3, min_peak=0.0, min_sum=0.0, noise_th
     return events
 
 
-def threshold_events(data, threshold, adjust_times=True, baseline=0.0):
-    """Finds regions in a trace that cross a threshold value (as measured by distance from baseline). Returns the index, time, length, peak, and sum of each event.
-    Optionally adjusts times to an extrapolated baseline-crossing."""
+def threshold_events(trace, threshold, adjust_times=True, baseline=0.0):
+    """
+    Finds regions in a trace that cross a threshold value (as measured by distance from baseline). Returns the index, length, peak, and sum of each event.
+    Optionally adjusts index to an extrapolated baseline-crossing.
+    """
     threshold = abs(threshold)
-    data1 = data.view(np.ndarray)
-    data1 = data1 - baseline
+    data = trace.data
+    data1 = data - baseline
     #if (hasattr(data, 'implements') and data.implements('MetaArray')):
-    try:
-        xvals = data.xvals(0)
-        dt = xvals[1]-xvals[0]
-    except:
-        dt = 1
-        xvals = None
     
     ## find all threshold crossings
     masks = [(data1 > threshold).astype(np.byte), (data1 < -threshold).astype(np.byte)]
     hits = []
     for mask in masks:
         diff = mask[1:] - mask[:-1]
-        onTimes = np.argwhere(diff==1)[:,0]+1
-        offTimes = np.argwhere(diff==-1)[:,0]+1
-        #print mask
-        #print diff
-        #print onTimes, offTimes
-        if len(onTimes) == 0 or len(offTimes) == 0:
+        on_inds = np.argwhere(diff==1)[:,0] + 1
+        off_inds = np.argwhere(diff==-1)[:,0] + 1
+        if len(on_inds) == 0 or len(off_inds) == 0:
             continue
-        if offTimes[0] < onTimes[0]:
-            offTimes = offTimes[1:]
-            if len(offTimes) == 0:
+        if off_inds[0] < on_inds[0]:
+            off_inds = off_inds[1:]
+            if len(off_inds) == 0:
                 continue
-        if offTimes[-1] < onTimes[-1]:
-            onTimes = onTimes[:-1]
-        for i in xrange(len(onTimes)):
-            hits.append((onTimes[i], offTimes[i]))
+        if off_inds[-1] < on_inds[-1]:
+            on_inds = on_inds[:-1]
+        for i in range(len(on_inds)):
+            hits.append((on_inds[i], off_inds[i]))
     
     ## sort hits  ## NOTE: this can be sped up since we already know how to interleave the events..
     hits.sort(lambda a,b: cmp(a[0], b[0]))
     
-    nEvents = len(hits)
-    if xvals is None:
-        events = np.empty(nEvents, dtype=[('index',int),('len', int),('sum', float),('peak', float),('peakIndex', int)])  ### rows are [start, length, sum]
-    else:
-        events = np.empty(nEvents, dtype=[('index',int),('time',float),('len', int),('sum', float),('peak', float),('peakIndex', int)])  ### rows are     
-
-    mask = np.ones(nEvents, dtype=bool)
+    n_events = len(hits)
+    events = np.empty(n_events, dtype=[
+        ('index', int),
+        ('len', int),
+        ('sum', float),
+        ('peak', float),
+        ('peak_index', int),
+        # only used if timing is available:
+        ('time', float),
+        ('duration', float),
+        ('area', float),
+        ('peak_time', float),
+    ])
     
     ## Lots of work ahead:
     ## 1) compute length, peak, sum for each event
     ## 2) adjust event times if requested, then recompute parameters
-    for i in range(nEvents):
-        t1, t2 = hits[i]
-        ln = t2-t1
-        evData = data1[t1:t2]
-        sum = evData.sum()
+    for i in range(n_events):
+        ind1, ind2 = hits[i]
+        ln = ind2-ind1
+        ev_data = data1[ind1:ind2]
+        sum = ev_data.sum()
         if sum > 0:
-            #peak = evData.max()
-            #ind = argwhere(evData==peak)[0][0]+t1
-            peakInd = np.argmax(evData)
+            peak_ind = np.argmax(ev_data)
         else:
-            #peak = evData.min()
-            #ind = argwhere(evData==peak)[0][0]+t1
-            peakInd = np.argmin(evData)
-        peak = evData[peakInd]
-        peakInd += t1
+            peak_ind = np.argmin(ev_data)
+        peak = ev_data[peak_ind]
+        peak_ind += ind1
             
-        #print "event %f: %d" % (xvals[t1], t1) 
+        #print "event %f: %d" % (xvals[ind1], ind1) 
         if adjust_times:  ## Move start and end times outward, estimating the zero-crossing point for the event
         
-            ## adjust t1 first
-            mind = np.argmax(evData)
-            pdiff = abs(peak - evData[0])
+            ## adjust ind1 first
+            mind = np.argmax(ev_data)
+            pdiff = abs(peak - ev_data[0])
             if pdiff == 0:
                 adj1 = 0
             else:
                 adj1 = int(threshold * mind / pdiff)
                 adj1 = min(ln, adj1)
-            t1 -= adj1
-            #print "   adjust t1", adj1
+            ind1 -= adj1
             
             ## check for collisions with previous events
             if i > 0:
-                #lt2 = events[i-1]['index'] + events[i-1]['len']
-                lt2 = hits[i-1][1]
-                if t1 < lt2:
-                    diff = lt2-t1   ## if events have collided, force them to compromise
-                    tot = adj1 + lastAdj
+                lind2 = hits[i-1][1]
+                if ind1 < lind2:
+                    diff = lind2-ind1   ## if events have collided, force them to compromise
+                    tot = adj1 + last_adj
                     if tot != 0:
-                        d1 = diff * float(lastAdj) / tot
+                        d1 = diff * float(last_adj) / tot
                         d2 = diff * float(adj1) / tot
-                        #events[i-1]['len'] -= (d1+1)
                         hits[i-1] = (int(hits[i-1][0]), int(hits[i-1][1]-(d1+1)))
-                        t1 += d2
-                        #recompute[i-1] = True
-                        #print "  correct t1", d2, "  correct prev.", d1+1
-            #try:
-                #print "   correct t1", d2, "  correct prev.", d1+1
-            #except:
-                #pass
+                        ind1 += d2
             
-            ## adjust t2
+            ## adjust ind2
             mind = ln - mind
-            pdiff = abs(peak - evData[-1])
+            pdiff = abs(peak - ev_data[-1])
             if pdiff == 0:
                 adj2 = 0
             else:
                 adj2 = int(threshold * mind / pdiff)
                 adj2 = min(ln, adj2)
-            t2 += adj2
-            lastAdj = adj2
-            #print "  adjust t2", adj2
+            ind2 += adj2
+            last_adj = adj2
             
-            #recompute[i] = True
-            
-        #starts.append(t1)
-        #stops.append(t2)
-        hits[i] = (int(t1), int(t2))
+        hits[i] = (int(ind1), int(ind2))
         events[i]['peak'] = peak
-        #if index == 'peak':
-            #events[i]['index']=ind
-        #else:
-        events[i]['index'] = t1
-        events[i]['peakIndex'] = peakInd
+        events[i]['index'] = ind1
+        events[i]['peak_index'] = peak_ind
         events[i]['len'] = ln
         events[i]['sum'] = sum
         
     if adjust_times:  ## go back and re-compute event parameters.
-        for i in range(nEvents):
-            t1, t2 = hits[i]
+        mask = np.ones(n_events, dtype=bool)
+        for i in range(n_events):
+            ind1, ind2 = hits[i]
             
-            ln = t2-t1
-            evData = data1[t1:t2]
-            sum = evData.sum()
-            if len(evData) == 0:
+            ln = ind2 - ind1
+            ev_data = data1[ind1:ind2]
+            sum = ev_data.sum()
+            if len(ev_data) == 0:
                 mask[i] = False
                 continue
             if sum > 0:
-                #peak = evData.max()
-                #ind = argwhere(evData==peak)[0][0]+t1
-                peakInd = np.argmax(evData)
+                peak_ind = np.argmax(ev_data)
             else:
-                #peak = evData.min()
-                #ind = argwhere(evData==peak)[0][0]+t1
-                peakInd = np.argmin(evData)
-            peak = evData[peakInd]
-            peakInd += t1
+                peak_ind = np.argmin(ev_data)
+            peak = ev_data[peak_ind]
+            peak_ind += ind1
                 
             events[i]['peak'] = peak
-            #if index == 'peak':
-                #events[i]['index']=ind
-            #else:
-            events[i]['index'] = t1
-            events[i]['peakIndex'] = peakInd
+            events[i]['index'] = ind1
+            events[i]['peak_index'] = peak_ind
             events[i]['len'] = ln
             events[i]['sum'] = sum
     
-    ## remove masked events
-    events = events[mask]
-    
-    if xvals is not None:
-        events['time'] = xvals[events['index']]
-        
-    #for i in xrange(len(events)):
-        #print events[i]['time'], events[i]['peak']
+        ## remove masked events
+        events = events[mask]
+
+    # add in timing information if available:
+    if trace.has_timing:
+        for ev in events:
+            i1 = ev['index']
+            i2 = i1 + ev['len']
+            ev['time'] = trace.time_at(i1)
+            ev['duration'] = trace.time_at(i2) - ev['time']
+            ev['area'] = np.trapz(y=data1[i1:i2], x=trace.time_values[i1:i2])
+            ev['peak_time'] = trace.time_at(ev['peak_index'])
+    else:
+        ev['time'] = np.nan
+        ev['duration'] = np.nan
+        ev['area'] = np.nan
+        ev['peak_time'] = np.nan
 
     return events
 
