@@ -47,6 +47,8 @@ c.show()
 
 def detect_ic_evoked_spike(trace, pulse_edges, dvdt_threshold=0.0013, mse_threshold=80.):
     global c
+    c.setStack()
+
     import pyqtgraph as pg
     w = pg.GraphicsLayoutWidget()
     plt1 = w.addPlot()
@@ -59,25 +61,16 @@ def detect_ic_evoked_spike(trace, pulse_edges, dvdt_threshold=0.0013, mse_thresh
     plt1.plot(trace.time_values, trace.data)
     w.resize(1000, 900)
 
-
     assert trace.data.ndim == 1
-    # trace = bessel_filter(trace, 20e3)
-#    trace = trace.resample(sample_rate=20000)
     pulse_edges = tuple(map(float, pulse_edges))  # make sure pulse_edges is (float, float)
     
-    # dt = trace.dt
-    # pstart, pstop = trace.index_at(pulse_edges[0]), trace.index_at(pulse_edges[1])
     # get indicies for a window within the pulse to look in (note these are not index of the pulse)
     pulse_window = (pulse_edges[0] + 300e-6, pulse_edges[1] - 50e-6)
-    # pulse_window_start = pstart + int(.0003 / dt)
-    # pulse_window_end = pstop - int(.00005 / dt)
 
     # third derivative of trace
     diff1 = trace.time_slice(*pulse_edges).diff()
     plt2.plot(diff1.time_values, diff1.data)
     diff2 = diff1.diff()
-    # d2vdt2 = bessel_filter(trace.copy(data=d2vdt2), 10e3, order=8, bidir=True).data
-    # d2vdt2 = adaptive_detrend(d2vdt2, window=(pulse_window_start, pulse_window_end))
 
     # plt.figure()
     # plt.plot(dvdt, 'r')
@@ -114,10 +107,6 @@ def detect_ic_evoked_spike(trace, pulse_edges, dvdt_threshold=0.0013, mse_thresh
     w.show()
     # plt.plot(dvdt, 'b')
 
-
-    # chunk = d2vdt2[pulse_window_start:pulse_window_end]
-    # max_d2vdt2_idx = np.argmax(chunk) + pulse_window_start
-    # d2vdt2_threshold = np.std(chunk)*2.
     # threshold2 = scoreatpercentile(diff2.time_slice(pulse_edges[1]+3e-3, None).data, 85) * 2
     threshold2 = 40e3  # would be better to measure this, but it's tricky in d2..
     threshold3 = scoreatpercentile(np.abs(diff3.time_slice(*pulse_window).data), 70)
@@ -126,8 +115,6 @@ def detect_ic_evoked_spike(trace, pulse_edges, dvdt_threshold=0.0013, mse_thresh
     
     events2 = list(threshold_events(diff2 / threshold2, threshold=1.0, adjust_times=False))
     events3 = list(threshold_events(diff3 / threshold3, threshold=1.0, adjust_times=False, omit_ends=False))
-    # print(events3)
-    # print(events2)
 
     # A spike produces a combination of detectable events in both the second and third derivatives;
     # by combining these events, we increase the accuracy for detection.    
@@ -178,23 +165,26 @@ def detect_ic_evoked_spike(trace, pulse_edges, dvdt_threshold=0.0013, mse_thresh
         print(onset_time, total_area, len(je))
         if total_area < 300e-6:
             continue
-        for plt in [plt1, plt2, plt3, plt4]:
-            plt.addLine(x=onset_time)
+        
+        # don't double-count spikes within 1 ms
+        if len(spikes) > 0 and onset_time < spikes[-1]['onset_time'] + 1e-3:
+            continue
+
+        max_dvdt_window = onset_time, pulse_edges[1]-50e-6
+        max_dvdt_chunk = diff1.time_slice(*max_dvdt_window)
+        max_dvdt_idx = np.argmax(max_dvdt_chunk.data)
+        max_dvdt_time = max_dvdt_chunk.time_at(max_dvdt_idx)
+        if max_dvdt_time > max_dvdt_window[1] - 10e-6:
+            # can't see max slope
+            max_dvdt_time = None
         
         spikes.append({
             'onset_time': onset_time,
             'peak_time': None,
-            'max_dvdt_time': None,
+            'max_dvdt_time': max_dvdt_time,
         })
-    
-    c.setStack()
-    while w.isVisible():
-        pg.Qt.QtTest.QTest.qWait(1)
 
     
-    if len(spikes) == 0:
-        return None
-    return spikes[0]
 
     # if d2vdt2[max_d2vdt2_idx] > d2vdt2_threshold:
     #     #find max dvdt nearby
@@ -209,32 +199,31 @@ def detect_ic_evoked_spike(trace, pulse_edges, dvdt_threshold=0.0013, mse_thresh
     #     spike_index = None
     
 
-    # #if no spike was found in the pulse region check to see if there is a spike in the pulse termination region
-    # if spike_index is None:
-    #     #note that this is using the dvdt with the termination artifact in it to locate where it should start 
-    #     chunk = trace.data[pstop : pstop + int(.0005 / dt)]
+    # if no spike was found in the pulse region check to see if there is a spike in the pulse termination region
+    if len(spikes) == 0:
+        # note that this is using the dvdt with the termination artifact in it to locate where it should start 
+        afterpulse = trace.time_slice(pulse_edges[1], None).diff()
+        plt2.plot(afterpulse.time_values, afterpulse.data)
         
-    #     # #find location of minimum dv/dt
-    #     min_dvdt_idx = np.argmin(np.diff(chunk)) + pstop  #global minimum index
+        # #find location of minimum dv/dt
+        chunk = afterpulse.time_slice(afterpulse.t0+50e-6, afterpulse.t0 + 500e-6)
+        min_dvdt_time = afterpulse.time_at(np.argmin(chunk.data))
     
-    #     # create a vector to fit
-    #     dvtofit=np.diff(trace.data)[min_dvdt_idx + 1:] #+1 here to get rid of actual artifact, 
-    #     ttofit=trace.time_values[(min_dvdt_idx + 1 + 1):] - trace.time_values[(min_dvdt_idx + 1 + 1)] # setting time to start at zero, note: +1 because time trace of derivative needs to be one shorter
+        # create a vector to fit
+        dvtofit = afterpulse.time_slice(min_dvdt_time + 50e-6, None)  # +50us here to get rid of actual artifact, 
+        ttofit = dvtofit.time_values  # setting time to start at zero, note: +1 because time trace of derivative needs to be one shorter
+        ttofit = ttofit - ttofit[0]
 
-    #     # do fit and see if it matches
-    #     popt, pcov = curve_fit(rc_decay, ttofit, dvtofit, maxfev=10000)
-    #     fit = rc_decay(ttofit, *popt)
-    #     mse = (np.sum((dvtofit-fit)**2))/len(fit)*1e10 #mean squared error
-    #     # plt.figure()
-    #     # plt.plot(ttofit, dvtofit, 'r')
-    #     # plt.plot(ttofit, fit, 'k--', label=('mse: %f' % (mse)))
-    #     # plt.legend()   
-    #     if mse > mse_threshold:
-    #         # note this is looking for the max of the data with the termination artifact removed.
-    #         max_dvdt_idx = np.argmax(dvdt[pulse_window_end : pulse_window_end + int(3./dt)]) + pulse_window_end  #TODO: potential problem if this goes past end of trace
-    #         spike_index = max_dvdt_idx   
-    #     else:
-    #         spike_index =  None
+        # do fit and see if it matches
+        popt, pcov = curve_fit(rc_decay, ttofit, dvtofit.data, maxfev=10000)
+        fit = rc_decay(ttofit, *popt)
+        plt2.plot(dvtofit.time_values, fit, pen='b')
+        mse = np.sum((dvtofit.data - fit)**2) / len(fit) * 1e10  # mean squared error
+        if mse > mse_threshold:
+            # note this is looking for the max of the data with the termination artifact removed.
+            max_dvdt_idx = np.argmax(afterpulse.time_slice(pulse_edges[1], pulse_edges[1] + 3e-3).data)
+            max_dvdt_time = afterpulse.time_at(max_dvdt_idx)
+            spikes.append({'onset_time': None, 'max_dvdt_time': max_dvdt_time})
 
     # plt.figure(figsize =  (10, 8))
     # voltage = trace.data
@@ -262,7 +251,20 @@ def detect_ic_evoked_spike(trace, pulse_edges, dvdt_threshold=0.0013, mse_thresh
     #         'peak_val': trace.data[peak_idx], 'max_dvdt': trace.data[spike_index]}
     # else:
     #     return None
+
+    for plt in [plt1, plt2, plt3, plt4]:
+        for spike in spikes:
+            if spike['onset_time'] is not None:
+                plt.addLine(x=spike['onset_time'])
+            if spike['max_dvdt_time'] is not None:
+                plt.addLine(x=spike['max_dvdt_time'], pen='b')
     
+    while w.isVisible():
+        pg.Qt.QtTest.QTest.qWait(1)
+    
+    if len(spikes) == 0:
+        return None
+    return spikes[0]
 
 
 
