@@ -10,10 +10,10 @@ from .baseline import mode_filter, adaptive_detrend
 from .event_detection import threshold_events
 
 
-def detect_evoked_spike(data, pulse_edges, **kwds):
-    """Return a dict describing an evoked spike in a patch clamp recording, or None if no spike is detected.
+def detect_evoked_spikes(data, pulse_edges, **kwds):
+    """Return a list of dicts describing spikes in a patch clamp recording that were evoked by a single stimulus pulse.
 
-    This function simply wraps either detect_ic_evoked_spike or detect_vc_evoked_spike, depending on the clamp mode
+    This function simply wraps either detect_ic_evoked_spikes or detect_vc_evoked_spikes, depending on the clamp mode
     used in *data*.
 
     Parameters
@@ -23,12 +23,20 @@ def detect_evoked_spike(data, pulse_edges, **kwds):
         to evoke a single spike with short latency.
     pulse_edges : (float, float)
         The start and end times of the stimulation pulse, relative to the timebase in *data*. 
+
+    Returns
+    =======
+    spikes : list
+        Each item in this list is a dictionary containing keys 'onset_time', 'max_dvdt_time', and 'peak_time',
+        indicating three possible time points during the spike that could be detected. Any of these values may
+        be None to indicate that the timepoint could not be reliably determined. Additional keys may be present,
+        such as 'peak' and 'max_dvdt'.
     """
     trace = data['primary']
     if data.clamp_mode == 'vc':
-        return detect_vc_evoked_spike(trace, pulse_edges, **kwds)
+        return detect_vc_evoked_spikes(trace, pulse_edges, **kwds)
     elif data.clamp_mode == 'ic':
-        return detect_ic_evoked_spike(trace, pulse_edges, **kwds)
+        return detect_ic_evoked_spikes(trace, pulse_edges, **kwds)
     else:
         raise ValueError("Unsupported clamp mode %s" % trace.clamp_mode)
 
@@ -39,108 +47,44 @@ def rc_decay(t, tau, Vo):
     return -(Vo/tau)*np.exp(-t/tau)
 
 
-def detect_ic_evoked_spike(trace, pulse_edges, dvdt_threshold=0.0013, mse_threshold=40., show=False):
+def detect_ic_evoked_spikes(trace, pulse_edges, dv2_threshold=40e3, mse_threshold=40., ui=None):
     """
     """
-    if show:
-        import pyqtgraph as pg
-        w = pg.GraphicsLayoutWidget()
-        plt1 = w.addPlot()
-        plt2 = w.addPlot(row=1, col=0)
-        plt2.setXLink(plt1)
-        plt3 = w.addPlot(row=2, col=0)
-        plt3.setXLink(plt1)
-        plt4 = w.addPlot(row=3, col=0)
-        plt4.setXLink(plt1)
-        plt1.plot(trace.time_values, trace.data)
-        w.resize(1000, 900)
-        w.show()
+    if ui is not None:
+        ui.clear()
+        ui.console.setStack()
+        ui.plt1.plot(trace.time_values, trace.data)
 
     assert trace.data.ndim == 1
     pulse_edges = tuple(map(float, pulse_edges))  # make sure pulse_edges is (float, float)
     
-    # get indicies for a window within the pulse to look in (note these are not index of the pulse)
-    pulse_window = (pulse_edges[0] + 300e-6, pulse_edges[1] - 50e-6)
-
-    # third derivative of trace
+    # calculate derivatives within pulse window
     diff1 = trace.time_slice(*pulse_edges).diff()
     diff2 = diff1.diff()
 
-    print("==========================")
-    print("pulse edges: %s" % repr(pulse_edges))
-
-    # mask out pulse artifacts from diff2 before lowpass filtering
+    # mask out pulse artifacts in diff2 before lowpass filtering
     for edge in pulse_edges:
         apply_cos_mask(diff2, center=edge + 100e-6, radius=400e-6, power=2)
 
-    diff2 = bessel_filter(diff2, 20e3, order=4, bidir=True)
-    diff3 = diff2.diff()
+    # low pass filter the second derivative
+    diff2 = bessel_filter(diff2, 10e3, order=4, bidir=True)
 
-    # mask out pulse artifacts from diff3 before lowpass filtering
-    for edge in pulse_edges:
-        apply_cos_mask(diff3, center=edge, radius=400e-6, power=3)
+    # look for positive bumps in second derivative
+    events2 = list(threshold_events(diff2 / dv2_threshold, threshold=1.0, adjust_times=False))
 
-    # lowpass 3rd derivative
-    diff3 = bessel_filter(diff3, 10e3, order=8, bidir=True)
-
-    threshold2 = 40e3  # would be better to measure this, but it's tricky in d2..
-    threshold3 = scoreatpercentile(np.abs(diff3.time_slice(*pulse_window).data), 70)
-
-    if show:
-        plt2.plot(diff1.time_values, diff1.data)
-        plt3.plot(diff2.time_values, diff2.data)
-        plt4.plot(diff3.time_values, diff3.data)
-        plt3.addLine(y=threshold2)
-        plt4.addLine(y=threshold3)
+    if ui is not None:
+        ui.plt2.plot(diff1.time_values, diff1.data)
+        ui.plt3.plot(diff2.time_values, diff2.data)
+        ui.plt3.addLine(y=dv2_threshold)
     
-    events2 = list(threshold_events(diff2 / threshold2, threshold=1.0, adjust_times=False))
-    events3 = list(threshold_events(diff3 / threshold3, threshold=1.0, adjust_times=False, omit_ends=False))
-
-    # A spike produces a combination of detectable events in both the second and third derivatives;
-    # by combining these events, we increase the accuracy for detection.    
-    joined_events = []
-    while len(events2) > 0:
-        je = []
-        event = events2.pop(0)
-        
-        # spikes begin with a + event in d2
-        if event['peak'] < 0:
-            continue
-        # if diff2.value_at(event['peak_time']) < 0:
-        #     continue
-        print('------')
-        print(event)
-        je.append(event)
-        
-        # # .. and a possible + event in d3:
-        # d3_search_start = event['time'] - 300e-6
-        # d3_search_stop = event['time'] + 100e-6
-        # # discard older or negative d2 events
-        # while len(events3) > 0 and (events3[0]['time'] < d3_search_start or events3[0]['peak'] < 0):
-        #     events3.pop(0)
-        # if len(events3) > 0 and d3_search_start < events3[0]['time'] < d3_search_stop:
-        #     print("d3+ :")
-        #     print(events3[0])
-        #     je.append(events3.pop(0))
-
-        #     # ..and possibly followed by a - event in d3
-        #     if len(events3) > 0 and events3[0]['peak'] < 0 and je[-1]['time'] < events3[0]['time'] < je[-1]['time'] + 500e-6:
-        #         print("d3- :")
-        #         print(events3[0])
-        #         je.append(events3.pop(0))
-
-        # else:
-        #     print("no d3+ :")
-            
-            
-        joined_events.append(je)
-
-    
+    # for each bump in d2, either discard the event or generate spike metrics
     spikes = []
-    for je in joined_events:
-        total_area = sum([abs(ev['area']) for ev in je])
-        onset_time = je[0]['time']
-        if total_area < 200e-6:
+    for ev in events2:
+        total_area = ev['area']
+        onset_time = ev['time']
+
+        # require dv2 bump to be positive, not tiny
+        if total_area < 10e-6:
             continue
         
         # don't double-count spikes within 1 ms
@@ -153,9 +97,14 @@ def detect_ic_evoked_spike(trace, pulse_edges, dvdt_threshold=0.0013, mse_thresh
         max_dvdt_time = max_dvdt_chunk.time_at(max_dvdt_idx)
 
         max_dvdt_time, is_edge = max_time(diff1.time_slice(onset_time, pulse_edges[1] - 50e-6))
+        max_dvdt = diff1.value_at(max_dvdt_time)
+        # require dv/dt to be above a threshold value
+        if max_dvdt <= 50:  # mV/ms
+            continue
         if is_edge != 0:
             # can't see max slope
             max_dvdt_time = None
+            max_dvdt = None
         peak_time, is_edge = max_time(trace.time_slice(onset_time, pulse_edges[1] + 2e-3))
         if is_edge != 0 or pulse_edges[1] < peak_time < pulse_edges[1] + 50e-6:
             # peak is obscured by pulse edge
@@ -165,13 +114,16 @@ def detect_ic_evoked_spike(trace, pulse_edges, dvdt_threshold=0.0013, mse_thresh
             'onset_time': onset_time,
             'peak_time': peak_time,
             'max_dvdt_time': max_dvdt_time,
+            'peak': None if peak_time is None else trace.value_at(peak_time),
+            'max_dvdt': max_dvdt,
         })
 
     # if no spike was found in the pulse region check to see if there is a spike in the pulse termination region
     if len(spikes) == 0:
         # note that this is using the dvdt with the termination artifact in it to locate where it should start 
         dv_after_pulse = trace.time_slice(pulse_edges[1] + 100e-6, None).diff()
-        
+        dv_after_pulse = bessel_filter(dv_after_pulse, 15e3, bidir=True)
+
         # create a vector to fit
         dvtofit = dv_after_pulse #.time_slice(min_dvdt_time, None)
         ttofit = dvtofit.time_values  # setting time to start at zero, note: +1 because time trace of derivative needs to be one shorter
@@ -180,40 +132,35 @@ def detect_ic_evoked_spike(trace, pulse_edges, dvdt_threshold=0.0013, mse_thresh
         # do fit and see if it matches
         popt, pcov = curve_fit(rc_decay, ttofit, dvtofit.data, maxfev=10000)
         fit = rc_decay(ttofit, *popt)
-        if show:
-            plt2.plot(dv_after_pulse.time_values, dv_after_pulse.data)
-            plt2.plot(dvtofit.time_values, fit, pen='b')
+        if ui is not None:
+            ui.plt2.plot(dv_after_pulse.time_values, dv_after_pulse.data)
+            ui.plt2.plot(dvtofit.time_values, fit, pen='b')
         mse = ((dvtofit.data - fit)**2).mean()  # mean squared error
         if mse > mse_threshold:
-            search_window = 3e-3
+            search_window = 2e-3
             max_dvdt_time, is_edge = max_time(dv_after_pulse.time_slice(pulse_edges[1], pulse_edges[1] + search_window))
             if is_edge != 0:
                 max_dvdt_time = None
             peak_time, is_edge = max_time(trace.time_slice(max_dvdt_time or pulse_edges[1] + 100e-6, pulse_edges[1] + search_window))
             if is_edge != 0:
                 peak_time = None
-            spikes.append({'onset_time': None, 'max_dvdt_time': max_dvdt_time, 'peak_time': peak_time})
+            spikes.append({
+                'onset_time': None,
+                'max_dvdt_time': max_dvdt_time,
+                'peak_time': peak_time,
+                'peak': None if peak_time is None else trace.value_at(peak_time),
+                'max_dvdt': None if max_dvdt_time is None else dv_after_pulse.value_at(max_dvdt_time),
+            })
 
-    if show:
-        for plt in [plt1, plt2, plt3, plt4]:
-            for spike in spikes:
-                if spike['onset_time'] is not None:
-                    plt.addLine(x=spike['onset_time'])
-                if spike['max_dvdt_time'] is not None:
-                    plt.addLine(x=spike['max_dvdt_time'], pen='b')
-                if spike['peak_time'] is not None:
-                    plt.addLine(x=spike['peak_time'], pen='g')
-        
-        while w.isVisible():
-            pg.Qt.QtTest.QTest.qWait(1)
+    if ui is not None:
+        ui.show_spike_lines(spikes)
+        for spike in spikes:
+            print(spike)
     
-    if len(spikes) == 0:
-        return None
-    return spikes[0]
+    return spikes
 
 
-
-def detect_vc_evoked_spike(trace, pulse_edges, sigma=20e-6, delay=150e-6, threshold=50e-12, show=False):
+def detect_vc_evoked_spikes(trace, pulse_edges, sigma=20e-6, delay=150e-6, threshold=50e-12, ui=None):
     """Return a dict describing an evoked spike in a patch clamp recording, or None if no spike is detected.
 
     This function assumes that a square voltage pulse is used to evoke an unclamped spike
@@ -276,7 +223,7 @@ def detect_vc_evoked_spike(trace, pulse_edges, sigma=20e-6, delay=150e-6, thresh
     peak_time, is_edge = min_time(smooth)
     if is_edge != 0:
         # no local minimum found within pulse edges
-        return None
+        return []
     
     # a spike is detected only if the peak_time is at least 50pA less than the final value before pulse offset
     peak_diff = smooth.data[-1] - smooth.value_at(peak_time)
@@ -286,9 +233,9 @@ def detect_vc_evoked_spike(trace, pulse_edges, sigma=20e-6, delay=150e-6, thresh
         max_dvdt_time, is_edge = min_time(dv.time_slice(peak_time - 1e-3, peak_time))
         max_dvdt = dv.value_at(max_dvdt_time)
 
-        return {'max_dvdt_time': max_dvdt_time, 'peak_time': peak_time, 'peak_diff': peak_diff, 'max_dvdt': max_dvdt}
+        return [{'max_dvdt_time': max_dvdt_time, 'peak_time': peak_time, 'peak_diff': peak_diff, 'max_dvdt': max_dvdt}]
     else:
-        return None
+        return []
 
 
 def apply_cos_mask(trace, center, radius, power):
@@ -332,3 +279,41 @@ def min_time(trace):
     else:
         is_edge = 0
     return trace.time_at(ind), is_edge
+
+
+class SpikeDetectUI(object):
+    """Used to display details of spike detection analysis.
+    """
+    def __init__(self):
+        import pyqtgraph as pg
+        import pyqtgraph.console
+
+        self.pw = pg.GraphicsLayoutWidget()
+        self.plt1 = self.pw.addPlot()
+        self.plt2 = self.pw.addPlot(row=1, col=0)
+        self.plt2.setXLink(self.plt1)
+        self.plt3 = self.pw.addPlot(row=2, col=0)
+        self.plt3.setXLink(self.plt1)
+        
+        self.console = pg.console.ConsoleWidget()
+        
+        self.widget = pg.QtGui.QSplitter(pg.QtCore.Qt.Vertical)
+        self.widget.addWidget(self.pw)        
+        self.widget.addWidget(self.console)
+        self.widget.resize(1000, 900)
+        self.widget.show()
+    
+    def clear(self):
+        self.plt1.clear()
+        self.plt2.clear()
+        self.plt3.clear()
+
+    def show_spike_lines(self, spikes):
+        for plt in [self.plt1, self.plt2, self.plt3]:
+            for spike in spikes:
+                if spike['onset_time'] is not None:
+                    plt.addLine(x=spike['onset_time'])
+                if spike['max_dvdt_time'] is not None:
+                    plt.addLine(x=spike['max_dvdt_time'], pen='b')
+                if spike['peak_time'] is not None:
+                    plt.addLine(x=spike['peak_time'], pen='g')
