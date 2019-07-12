@@ -307,13 +307,14 @@ class Recording(Container):
     Each channel is described by a single Trace instance. Channels are often 
     recorded with the same timebase, but this is not strictly required.
     """
-    def __init__(self, channels=None, start_time=None, device_type=None, device_id=None, sync_recording=None):
+    def __init__(self, channels=None, start_time=None, device_type=None, device_id=None, sync_recording=None, **meta):
         Container.__init__(self)
         self._meta = OrderedDict([
             ('start_time', start_time),
             ('device_type', device_type),
             ('device_id', device_id),
         ])
+        self._meta.update(meta)
         
         if channels is None:
             channels = OrderedDict()
@@ -378,9 +379,8 @@ class RecordingView(Recording):
         self._parent_rec = rec
         self._view_slice = (start, stop)
         chans = OrderedDict([(k, rec[k]) for k in rec.channels])
-        Recording.__init__(self, 
-            channels=chans, start_time=rec.start_time, device_type=rec.device_type,
-            device_id=rec.device_id, sync_recording=rec.sync_recording)
+        meta = rec.meta.copy()
+        Recording.__init__(self, channels=chans, sync_recording=rec.sync_recording, **meta)
 
     def __getattr__(self, attr):
         return getattr(self._parent_rec, attr)
