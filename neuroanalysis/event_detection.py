@@ -15,9 +15,6 @@ def zero_crossing_events(data, min_length=3, min_peak=0.0, min_sum=0.0, noise_th
     
     Returns an array of events where each row is (start, length, sum, peak)
     """
-    ## just make sure this is an ndarray and not a MetaArray before operating..
-    #p = Profiler('findEvents')
-    #p.mark('view')
     
     if isinstance(data, Trace):
         xvals = data.time_values
@@ -39,23 +36,23 @@ def zero_crossing_events(data, min_length=3, min_peak=0.0, min_sum=0.0, noise_th
     
     ## select only events longer than min_length.
     ## We do this check early for performance--it eliminates the vast majority of events
-    longEvents = np.argwhere(times[1:] - times[:-1] > min_length)
-    if len(longEvents) < 1:
-        nEvents = 0
+    long_events = np.argwhere(times[1:] - times[:-1] > min_length)
+    if len(long_events) < 1:
+        n_events = 0
     else:
-        longEvents = longEvents[:, 0]
-        nEvents = len(longEvents)
+        long_events = long_events[:, 0]
+        n_events = len(long_events)
     
     ## Measure sum of values within each region between crossings, combine into single array
     if xvals is None:
-        events = np.empty(nEvents, dtype=[('index',int),('len', int),('sum', float),('peak', float)])  ### rows are [start, length, sum]
+        events = np.empty(n_events, dtype=[('index',int),('len', int),('sum', float),('peak', float)])  ### rows are [start, length, sum]
     else:
-        events = np.empty(nEvents, dtype=[('index',int),('time',float),('len', int),('sum', float),('peak', float)])  ### rows are [start, length, sum]
-    #p.mark('empty %d -> %d'% (len(times), nEvents))
+        events = np.empty(n_events, dtype=[('index',int),('time',float),('len', int),('sum', float),('peak', float)])  ### rows are [start, length, sum]
+    #p.mark('empty %d -> %d'% (len(times), n_events))
     #n = 0
-    for i in range(nEvents):
-        t1 = times[longEvents[i]]+1
-        t2 = times[longEvents[i]+1]+1
+    for i in range(n_events):
+        t1 = times[long_events[i]]+1
+        t2 = times[long_events[i]+1]+1
         events[i]['index'] = t1
         events[i]['len'] = t2-t1
         evData = data1[t1:t2]
