@@ -14,9 +14,20 @@ pg.dbg()  # for inspecting exception stack
 
 # cells with currently poorly identified spikes 
 cell_ids = [
+    # VC
+    [1540356446.981, 8, 6, [4, 5, 9, 0]],
+    [1497417667.378, 5, 2, [0, 14]],
+    [1544582617.589, 1, 6, [4, 13]],
+    [1491942526.646, 8, 1, [5, 6, 8, 52]],
+    [1521004040.059, 5, 6, [7, 8, 92]],
+    [1534293227.896, 7, 8, [4]],
+    [1516233523.013, 6, 7, [0, 5, 7]],
+    [1534297702.068, 7, 2, [0, 1, 2]],
+
+    # IC
     [1540356446.981, 8, 6, [79]],
     [1497417667.378, 5, 2, [21]],  # no spikes at all
-    [1544582617.589, 1, 6, [89, 40, 41, 84]], 
+    [1544582617.589, 1, 6, [89, 40, 41, 84]],
     [1544582617.589, 1, 8, [59]],  #this is a good text bc two fail but the others are sort of sad looking.
     [1491942526.646, 8, 1, [14, 27]],  #this one is giving me issues #this presynaptic cell is sick.  Spiking is ambiguious, very interesting examples
     [1521004040.059, 5, 6, [23, 24]],
@@ -54,7 +65,6 @@ def iter_pulses():
             sweeps = expt.data.contents
         else:
             sweeps = [expt.data.contents[swid] for swid in sweep_ids]
-        sweeps = expt.data.contents
     
         for sweep in sweeps:
             # Ignore sweep if it doesn't have the requested channel, or the correct stimulus
@@ -64,6 +74,7 @@ def iter_pulses():
                 continue
             if not isinstance(pre_rec, MultiPatchProbe):
                 continue
+
             print("sweep: %d  channel: %d" % (sweep.key, channel))
 
             # Get chunks for each stim pulse        
@@ -84,7 +95,7 @@ def load_next():
     pulse_edges = chunk.meta['pulse_edges']
     spikes = detect_evoked_spikes(chunk, pulse_edges, ui=ui)
     
-    # copy just the necessary parts of recording data for export to file
+    copy just the necessary parts of recording data for export to file
     export_chunk = PatchClampRecording(channels={k:Trace(chunk[k].data, t0=chunk[k].t0, sample_rate=chunk[k].sample_rate) for k in chunk.channels})
     export_chunk.meta.update(chunk.meta)
     
@@ -98,7 +109,7 @@ def load_next():
         'pulse_edges': chunk.meta['pulse_edges'],
         'spikes': spikes,
     }
-    test_file = '../neuroanalysis/test_data/evoked_spikes/%s_spike_%04d.pkl' % (chunk.clamp_mode, fileno)
+    test_file = 'test_data/evoked_spikes/%s_spike_%04d.pkl' % (chunk.clamp_mode, fileno)
     print("write:", test_file)
     pickle.dump(info, open(test_file, 'w'))
     fileno += 1
