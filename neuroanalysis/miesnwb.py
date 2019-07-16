@@ -460,20 +460,19 @@ class MiesRecording(PatchClampRecording):
 
     @property
     def baseline_regions(self):
-        """A list of (start, stop) index pairs that cover regions of the recording
+        """A list of (start, stop) time pairs that cover regions of the recording
         the cell is expected to be in a steady state.
         """
         pri = self['primary']
-        dt = pri.dt
         regions = []
         start = self.meta['notebook']['Delay onset auto'] / 1000.  # duration of test pulse
         dur = self.meta['notebook']['Delay onset user'] / 1000.  # duration of baseline
         if dur > 0:
-            regions.append((int(start/dt), int(start+dur/dt)))
+            regions.append((start, start+dur))
            
         dur = self.meta['notebook']['Delay termination'] / 1000.
         if dur > 0:
-            regions.append((-int(dur/dt), None))
+            regions.append((pri.t_end-dur, pri.t_end))
             
         return regions
 

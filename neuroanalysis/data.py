@@ -497,7 +497,7 @@ class PatchClampRecording(Recording):
 
     @property
     def baseline_regions(self):
-        """A list of (start,stop) index pairs that cover regions of the recording
+        """A list of (start,stop) time pairs that cover regions of the recording
         the cell is expected to be in a steady state.
         """
         return []
@@ -507,7 +507,7 @@ class PatchClampRecording(Recording):
         """All items in baseline_regions concatentated into a single trace.
         """
         if self._baseline_data is None:
-            data = [self['primary'].data[start:stop] for start,stop in self.baseline_regions]
+            data = [self['primary'].time_slice(start,stop).data for start,stop in self.baseline_regions]
             if len(data) == 0:
                 data = np.empty(0, dtype=self['primary'].data.dtype)
             else:
