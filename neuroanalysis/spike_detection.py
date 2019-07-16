@@ -47,7 +47,7 @@ def rc_decay(t, tau, Vo):
     return -(Vo/tau)*np.exp(-t/tau)
 
 
-def detect_ic_evoked_spikes(trace, pulse_edges, dv2_threshold=40e3, mse_threshold=40., ui=None):
+def detect_ic_evoked_spikes(trace, pulse_edges, dv2_threshold=40e3, mse_threshold=30., ui=None):
     """
     """
     if ui is not None:
@@ -83,6 +83,10 @@ def detect_ic_evoked_spikes(trace, pulse_edges, dv2_threshold=40e3, mse_threshol
         total_area = ev['area']
         onset_time = ev['time']
 
+        # ignore events near pulse offset
+        if abs(onset_time - pulse_edges[1]) < 50e-6:
+            continue
+
         # require dv2 bump to be positive, not tiny
         if total_area < 10e-6:
             continue
@@ -93,13 +97,15 @@ def detect_ic_evoked_spikes(trace, pulse_edges, dv2_threshold=40e3, mse_threshol
 
         max_slope_window = onset_time, pulse_edges[1]-50e-6
         max_slope_chunk = diff1.time_slice(*max_slope_window)
+        if len(max_slope_chunk) == 0:
+            continue
         max_slope_idx = np.argmax(max_slope_chunk.data)
         max_slope_time = max_slope_chunk.time_at(max_slope_idx)
 
         max_slope_time, is_edge = max_time(diff1.time_slice(onset_time, pulse_edges[1] - 50e-6))
         max_slope = diff1.value_at(max_slope_time)
         # require dv/dt to be above a threshold value
-        if max_slope <= 50:  # mV/ms
+        if max_slope <= 30:  # mV/ms
             continue
         if is_edge != 0:
             # can't see max slope
@@ -114,7 +120,7 @@ def detect_ic_evoked_spikes(trace, pulse_edges, dv2_threshold=40e3, mse_threshol
             'onset_time': onset_time,
             'peak_time': peak_time,
             'max_slope_time': max_slope_time,
-            'peak': None if peak_time is None else trace.value_at(peak_time),
+            'peak_value': None if peak_time is None else trace.value_at(peak_time),
             'max_slope': max_slope,
         })
 
@@ -125,20 +131,21 @@ def detect_ic_evoked_spikes(trace, pulse_edges, dv2_threshold=40e3, mse_threshol
         dv_after_pulse = bessel_filter(dv_after_pulse, 15e3, bidir=True)
 
         # create a vector to fit
-        dvtofit = dv_after_pulse #.time_slice(min_dvdt_time, None)
-        ttofit = dvtofit.time_values  # setting time to start at zero, note: +1 because time trace of derivative needs to be one shorter
+        ttofit = dv_after_pulse.time_values  # setting time to start at zero, note: +1 because time trace of derivative needs to be one shorter
         ttofit = ttofit - ttofit[0]
 
         # do fit and see if it matches
-        popt, pcov = curve_fit(rc_decay, ttofit, dvtofit.data, maxfev=10000)
+        popt, pcov = curve_fit(rc_decay, ttofit, dv_after_pulse.data, maxfev=10000)
         fit = rc_decay(ttofit, *popt)
         if ui is not None:
             ui.plt2.plot(dv_after_pulse.time_values, dv_after_pulse.data)
-            ui.plt2.plot(dvtofit.time_values, fit, pen='b')
-        mse = ((dvtofit.data - fit)**2).mean()  # mean squared error
+            ui.plt2.plot(dv_after_pulse.time_values, fit, pen='b')
+
+        diff = dv_after_pulse - fit
+        mse = (diff.data**2).mean()  # mean squared error
         if mse > mse_threshold:
             search_window = 2e-3
-            max_slope_time, is_edge = max_time(dv_after_pulse.time_slice(pulse_edges[1], pulse_edges[1] + search_window))
+            max_slope_time, is_edge = max_time(diff.time_slice(pulse_edges[1], pulse_edges[1] + search_window))
             if is_edge != 0:
                 max_slope_time = None
             peak_time, is_edge = max_time(trace.time_slice(max_slope_time or pulse_edges[1] + 100e-6, pulse_edges[1] + search_window))
@@ -148,7 +155,7 @@ def detect_ic_evoked_spikes(trace, pulse_edges, dv2_threshold=40e3, mse_threshol
                 'onset_time': None,
                 'max_slope_time': max_slope_time,
                 'peak_time': peak_time,
-                'peak': None if peak_time is None else trace.value_at(peak_time),
+                'peak_value': None if peak_time is None else trace.value_at(peak_time),
                 'max_slope': None if max_slope_time is None else dv_after_pulse.value_at(max_slope_time),
             })
 
@@ -225,10 +232,12 @@ def detect_vc_evoked_spikes(trace, pulse_edges, ui=None):
 
         if ev['sum'] < 0:
             onset_time = ev['peak_time']
+            search_time = onset_time
         else:
-            onset_time = ev['time'] - 200e-6
+            search_time = ev['time'] - 200e-6
+            onset_time = None
 
-        max_slope_rgn = diff1.time_slice(onset_time, onset_time + 0.5e-3)
+        max_slope_rgn = diff1.time_slice(search_time, search_time + 0.5e-3)
         max_slope_time, is_edge = min_time(max_slope_rgn)
         max_slope = diff1.value_at(max_slope_time)
         if max_slope > 0:
@@ -236,7 +245,7 @@ def detect_vc_evoked_spikes(trace, pulse_edges, ui=None):
             # (above we only tested the sign of the high-passed event)
             continue
         
-        peak_search_rgn = trace.time_slice(max_slope_time, min(pulse_edges[1], onset_time + 1e-3))
+        peak_search_rgn = trace.time_slice(max_slope_time, min(pulse_edges[1], search_time + 1e-3))
         peak_time, is_edge = min_time(peak_search_rgn)
         if is_edge:
             peak = None
@@ -249,7 +258,7 @@ def detect_vc_evoked_spikes(trace, pulse_edges, ui=None):
             'max_slope_time': max_slope_time,
             'max_slope': max_slope,
             'peak_time': peak_time,
-            'peak': peak,
+            'peak_value': peak,
         })
 
     if ui is not None:
