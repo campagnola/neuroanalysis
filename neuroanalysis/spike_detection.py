@@ -246,12 +246,16 @@ def detect_vc_evoked_spikes(trace, pulse_edges, ui=None):
             continue
         
         peak_search_rgn = trace.time_slice(max_slope_time, min(pulse_edges[1], search_time + 1e-3))
-        peak_time, is_edge = min_time(peak_search_rgn)
-        if is_edge:
+        if len(peak_search_rgn) == 0:
             peak = None
             peak_time = None
         else:
-            peak = trace.time_at(peak_time)
+            peak_time, is_edge = min_time(peak_search_rgn)
+            if is_edge:
+                peak = None
+                peak_time = None
+            else:
+                peak = trace.time_at(peak_time)
 
         spikes.append({
             'onset_time': onset_time,
