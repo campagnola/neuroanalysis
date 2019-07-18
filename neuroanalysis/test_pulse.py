@@ -1,8 +1,8 @@
 import numpy as np
 
-from data import PatchClampRecording, Trace
-from fitting import Exp
-from stimuli import find_square_pulses
+from .data import PatchClampRecording, Trace
+from .fitting import Exp
+from .stimuli import find_square_pulses
 
 
 class PatchClampTestPulse(PatchClampRecording):
