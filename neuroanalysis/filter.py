@@ -1,12 +1,12 @@
 import numpy as np
-import scipy.stats
-from pyqtgraph.flowchart.library.functions import besselFilter, butterworthFilter
+import scipy.stats, scipy.signal
 
 
 def bessel_filter(trace, cutoff, order=1, btype='low', bidir=True):
     """Return a Bessel-filtered copy of a Trace.
     """
-    filtered = besselFilter(trace.data, dt=trace.dt, cutoff=cutoff, order=order, btype=btype, bidir=bidir)
+    b,a = scipy.signal.bessel(order, cutoff * dt, btype=btype) 
+    filtered = apply_filter(trace.data, b, a, bidir=bidir)
     # todo: record information about filtering?
     #filtered.meta['processing'].append({'name': 'bessel_filter', 'cutoff': cutoff, 'order': order, 'btype': btype, 'bidir': bidir})
     return trace.copy(data=filtered)
@@ -15,9 +15,37 @@ def bessel_filter(trace, cutoff, order=1, btype='low', bidir=True):
 def butterworth_filter(trace, w_pass, w_stop=None, g_pass=2.0, g_stop=20.0, order=1, btype='low', bidir=True):
     """Return a Butterworth-filtered copy of a Trace.
     """
-    filtered = butterworthFilter(trace.data, dt=trace.dt, wStop=w_stop, wPass=w_pass, gPass=g_pass, gStop=g_stop, order=order, btype=btype, bidir=bidir)
+    if w_stop is None:
+        w_stop = w_pass * 2.0
+    ord, Wn = scipy.signal.buttord(w_pass*dt*2., w_stop*dt*2., g_pass, g_stop)
+    b,a = scipy.signal.butter(ord, Wn, btype=btype) 
+    filtered = apply_filter(trace.data, b, a, bidir=bidir)
+
     return trace.copy(data=filtered)
 
+
+def apply_filter(data, b, a, padding=100, bidir=True):
+    """Apply a linear filter with coefficients a, b. Optionally pad the data before filtering
+    and/or run the filter in both directions.
+    """
+    if padding > 0:
+        pad1 = data[:padding][::-1]
+        pad2 = data[-padding:][::-1]
+        padded = np.hstack([pad1, data, pad2])
+    
+    if bidir:
+        padded = scipy.signal.lfilter(b, a, scipy.signal.lfilter(b, a, padded)[::-1])[::-1]
+    else:
+        padded = scipy.signal.lfilter(b, a, padded)
+    
+    if padding > 0:
+        padded = padded[len(pad1):-len(pad2)]
+        
+    if (hasattr(data, 'implements') and data.implements('MetaArray')):
+        return MetaArray(d1, info=data.infoCopy())
+    else:
+        return d1
+    
 
 def savgol_filter(trace, window_duration, **kwds):
     """Return a Savitsky-Golay-filtered copy of a Trace.
