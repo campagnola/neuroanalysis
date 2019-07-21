@@ -23,6 +23,7 @@ from . import util
 from collections import OrderedDict
 from .stats import ragged_mean
 from .baseline import float_mode
+from .filter import downsample
 
 
 class Container(object):
@@ -1050,7 +1051,7 @@ class Trace(Container):
             raise Exception("Invalid downsampling factor: %d" % n)
         
         # downsample
-        data = util.downsample(self.data, n, axis=0)
+        data = downsample(self.data, n, axis=0)
         
         # handle timing
         tvals = self._time_values

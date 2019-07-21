@@ -85,4 +85,25 @@ def remove_artifacts(trace, edges, window):
         data[on:off] = slope * t[on:off] + intercept
     
     return trace.copy(data=data)
-        
+
+
+def downsample(data, n, axis=0):
+    """Downsample *data* by averaging *n* points together across *axis*.
+    """
+    n = int(n)
+    if n == 1:
+        return data
+    elif n < 1:
+        raise ValueError("Invalid downsampling window %d" % n)
+    
+    n_pts = int(data.shape[axis] / n)
+    s = list(data.shape)
+    s[axis] = n_pts
+    s.insert(axis+1, n)
+    sl = [slice(None)] * data.ndim
+    sl[axis] = slice(0, n_pts*n)
+    d1 = data[tuple(sl)]
+    d1.shape = tuple(s)
+    d2 = d1.mean(axis+1)
+
+    return d2
