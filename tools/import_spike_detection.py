@@ -14,6 +14,9 @@ pg.dbg()  # for inspecting exception stack
 
 # cells with currently poorly identified spikes 
 cell_ids = [
+    [1516398962.469, 3, 7, [57]],
+    [1539380189.073, 5, 4, []],   # very clear spikes with slope max right at pulse offset
+
     # VC
     [1540356446.981, 8, 6, [4, 5, 9, 0]],
     [1497417667.378, 5, 2, [0, 14]],
@@ -95,24 +98,24 @@ def load_next():
     pulse_edges = chunk.meta['pulse_edges']
     spikes = detect_evoked_spikes(chunk, pulse_edges, ui=ui)
     
-    copy just the necessary parts of recording data for export to file
+    # copy just the necessary parts of recording data for export to file
     export_chunk = PatchClampRecording(channels={k:Trace(chunk[k].data, t0=chunk[k].t0, sample_rate=chunk[k].sample_rate) for k in chunk.channels})
     export_chunk.meta.update(chunk.meta)
     
-    # write results out to test file
-    info = {
-        'expt_id': expt_id,
-        'pre_cell_id': pre_cell_id,
-        'post_cell_id': post_cell_id,
-        'sweep_id': sweep.key,
-        'data': export_chunk,
-        'pulse_edges': chunk.meta['pulse_edges'],
-        'spikes': spikes,
-    }
-    test_file = 'test_data/evoked_spikes/%s_spike_%04d.pkl' % (chunk.clamp_mode, fileno)
-    print("write:", test_file)
-    pickle.dump(info, open(test_file, 'w'))
-    fileno += 1
+    # # write results out to test file
+    # info = {
+    #     'expt_id': expt_id,
+    #     'pre_cell_id': pre_cell_id,
+    #     'post_cell_id': post_cell_id,
+    #     'sweep_id': sweep.key,
+    #     'data': export_chunk,
+    #     'pulse_edges': chunk.meta['pulse_edges'],
+    #     'spikes': spikes,
+    # }
+    # test_file = 'test_data/evoked_spikes/%s_spike_%04d.pkl' % (chunk.clamp_mode, fileno)
+    # print("write:", test_file)
+    # pickle.dump(info, open(test_file, 'w'))
+    # fileno += 1
 
 
 next_btn.clicked.connect(load_next)
