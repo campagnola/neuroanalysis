@@ -406,7 +406,7 @@ def create_all_fit_param_combos(base_params):
     '''
     # need to create all combinations of the initial conditions
     param_dict_list = [{}] #initialize list
-    for key, value in base_params.iteritems():
+    for key, value in base_params.items():
         if isinstance(value[0], list):
             temp_list=[]
             for init_cond in value[0]: #for each initial condition

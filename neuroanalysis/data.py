@@ -264,7 +264,7 @@ class SyncRecording(Container):
     def devices(self):
         """A list of the names of devices in this recording.
         """
-        return self._recordings.keys()
+        return list(self._recordings.keys())
 
     def __getitem__(self, item):
         """Return a recording given its device name.
@@ -275,7 +275,7 @@ class SyncRecording(Container):
     def recordings(self):
         """A list of the recordings in this syncrecording.
         """
-        return self._recordings.values()
+        return list(self._recordings.values())
 
     def data(self):
         return np.concatenate([self[dev].data()[None, :] for dev in self.devices], axis=0)

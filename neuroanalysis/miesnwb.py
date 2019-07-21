@@ -42,7 +42,7 @@ class MiesNwb(Experiment):
             # collect all lab notebook entries
             sweep_entries = OrderedDict()
             tp_entries = []
-            device = self.hdf['general/devices'].keys()[0].split('_',1)[-1]
+            device = list(self.hdf['general/devices'].keys())[0].split('_',1)[-1]
             nb_keys = self.hdf['general']['labnotebook'][device]['numericalKeys'][0]
             nb_fields = OrderedDict([(k, i) for i,k in enumerate(nb_keys)])
 
@@ -76,14 +76,14 @@ class MiesNwb(Experiment):
                     if any(np.isfinite(tp_peak)):
                         tp_dur = nb[i+1][nb_fields['TP Pulse Duration']]
                         if any(np.isfinite(tp_dur)):
-                            nb_iter.next()
+                            next(nb_iter)
                             is_tp_record = True
                     if not is_tp_record:
                         is_sweep_record = np.isfinite(sweep_num)
 
                 if is_tp_record:
                     rec = np.array(rec)
-                    nb_iter.next()
+                    next(nb_iter)
                     rec2 = np.array(nb[i+1])
                     mask = ~np.isnan(rec2)
                     rec[mask] = rec2[mask]
@@ -319,7 +319,7 @@ class MiesRecording(PatchClampRecording):
         self._hdf_group_name = sweep._channel_keys[ad_chan]['hdf_group_name']
         self._hdf_group = None
         self._da_chan = None
-        headstage_id = int(self.hdf_group['electrode_name'].value[0].split('_')[1])
+        headstage_id = int(self.hdf_group['electrode_name'][()][0].split('_')[1])
         
         PatchClampRecording.__init__(self, device_type='MultiClamp 700', device_id=headstage_id,
                                      sync_recording=sweep)
@@ -483,7 +483,7 @@ class MiesRecording(PatchClampRecording):
             hdf = self._nwb.hdf['stimulus/presentation']
             stims = [k for k in hdf.keys() if k.startswith('data_%05d_'%self._trace_id[0])]
             for s in stims:
-                elec = hdf[s]['electrode_name'].value[0]
+                elec = hdf[s]['electrode_name'][()][0]
                 if elec == 'electrode_%d' % self.device_id:
                     self._da_chan = int(s.split('_')[-1][2:])
             if self._da_chan is None:
@@ -629,7 +629,7 @@ class MiesStimulus(stimuli.Stimulus):
     """
     def __init__(self, recording):
         self._recording = recording
-        stim_name = recording.hdf_group['stimulus_description'].value[0]
+        stim_name = recording.hdf_group['stimulus_description'][()][0]
         stimuli.Stimulus.__init__(self, description=stim_name)
         self._items = None
 

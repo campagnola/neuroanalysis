@@ -133,7 +133,7 @@ def threshold_events(trace, threshold, adjust_times=True, baseline=0.0, omit_end
             hits.append((on_inds[i], off_inds[i]))
     
     ## sort hits  ## NOTE: this can be sped up since we already know how to interleave the events..
-    hits.sort(lambda a,b: cmp(a[0], b[0]))
+    hits.sort(key=lambda a: a[0])
     
     n_events = len(hits)
     events = np.empty(n_events, dtype=[
