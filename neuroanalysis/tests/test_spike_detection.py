@@ -5,7 +5,7 @@ import neuroanalysis
 from neuroanalysis.data import Recording, Trace
 from neuroanalysis.neuronsim.model_cell import ModelCell
 from neuroanalysis.units import pA, mV, MOhm, pF, us, ms
-from neuroanalysis.spike_detection import SpikeDetectTestCase
+from neuroanalysis.spike_detection import SpikeDetectTestCase, detect_evoked_spikes
 from neuroanalysis.ui.spike_detection import SpikeDetectTestUi
 
 path = os.path.join(os.path.dirname(neuroanalysis.__file__), '..', 'test_data', 'evoked_spikes', '*.pkl')
