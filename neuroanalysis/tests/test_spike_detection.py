@@ -1,20 +1,33 @@
 import os, glob, pickle
+import pytest
 import numpy as np
+import neuroanalysis
 from neuroanalysis.data import Recording, Trace
 from neuroanalysis.neuronsim.model_cell import ModelCell
 from neuroanalysis.units import pA, mV, MOhm, pF, us, ms
-from neuroanalysis.spike_detection import detect_evoked_spikes
+from neuroanalysis.spike_detection import SpikeDetectTestCase
+from neuroanalysis.ui.spike_detection import SpikeDetectTestUi
+
+path = os.path.join(os.path.dirname(neuroanalysis.__file__), '..', 'test_data', 'evoked_spikes', '*.pkl')
+spike_files = sorted(glob.glob(path))
+
+test_ui = None
 
 
-def test_spike_detection():
-    path = os.path.join(os.path.dirname(__file__), '..', 'test_data', 'evoked_spikes', '*.pkl')
-    files = glob.glob(path)
-    for filename in files:
-        data = pickle.load(open(filename))
-        spikes = detect_evoked_spikes(data['data'], data['pulse_edges'])
+@pytest.mark.parametrize('test_file', spike_files)
+def test_spike_detection(request, test_file):
+    global test_ui
+    audit = request.config.getoption('audit')
+    if audit and test_ui is None:
+        test_ui = SpikeDetectTestUi()
 
-        # might have to loosen this check somewhat if we change the detection algorithm..
-        assert spikes == data['spikes']
+    print("test:", test_file)
+    tc = SpikeDetectTestCase()
+    tc.load_file(test_file)
+    if audit:
+        tc.audit_test(test_ui)
+    else:
+        tc.run_test()
 
 
 def test_model_spike_detection():

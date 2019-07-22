@@ -5,7 +5,7 @@ import scipy.stats, scipy.signal
 def bessel_filter(trace, cutoff, order=1, btype='low', bidir=True):
     """Return a Bessel-filtered copy of a Trace.
     """
-    b,a = scipy.signal.bessel(order, cutoff * dt, btype=btype) 
+    b,a = scipy.signal.bessel(order, cutoff * trace.dt, btype=btype) 
     filtered = apply_filter(trace.data, b, a, bidir=bidir)
     # todo: record information about filtering?
     #filtered.meta['processing'].append({'name': 'bessel_filter', 'cutoff': cutoff, 'order': order, 'btype': btype, 'bidir': bidir})
@@ -17,6 +17,7 @@ def butterworth_filter(trace, w_pass, w_stop=None, g_pass=2.0, g_stop=20.0, orde
     """
     if w_stop is None:
         w_stop = w_pass * 2.0
+    dt = trace.dt
     ord, Wn = scipy.signal.buttord(w_pass*dt*2., w_stop*dt*2., g_pass, g_stop)
     b,a = scipy.signal.butter(ord, Wn, btype=btype) 
     filtered = apply_filter(trace.data, b, a, bidir=bidir)
@@ -31,21 +32,17 @@ def apply_filter(data, b, a, padding=100, bidir=True):
     if padding > 0:
         pad1 = data[:padding][::-1]
         pad2 = data[-padding:][::-1]
-        padded = np.hstack([pad1, data, pad2])
+        data = np.hstack([pad1, data, pad2])
     
     if bidir:
-        padded = scipy.signal.lfilter(b, a, scipy.signal.lfilter(b, a, padded)[::-1])[::-1]
+        filtered = scipy.signal.lfilter(b, a, scipy.signal.lfilter(b, a, data)[::-1])[::-1]
     else:
-        padded = scipy.signal.lfilter(b, a, padded)
+        filtered = scipy.signal.lfilter(b, a, data)
     
     if padding > 0:
-        padded = padded[len(pad1):-len(pad2)]
+        filtered = filtered[len(pad1):-len(pad2)]
         
-    if (hasattr(data, 'implements') and data.implements('MetaArray')):
-        return MetaArray(d1, info=data.infoCopy())
-    else:
-        return d1
-    
+    return filtered
 
 def savgol_filter(trace, window_duration, **kwds):
     """Return a Savitsky-Golay-filtered copy of a Trace.

@@ -1,4 +1,6 @@
 from __future__ import division, print_function
+
+import os, pickle, traceback
 import numpy as np
 from scipy.ndimage import gaussian_filter
 from scipy.optimize import curve_fit
@@ -159,11 +161,8 @@ def detect_ic_evoked_spikes(trace, pulse_edges, dv2_threshold=40e3, mse_threshol
                 'max_slope': None if max_slope_time is None else dv_after_pulse.value_at(max_slope_time),
             })
 
-    if ui is not None:
-        ui.show_spike_lines(spikes)
-        for spike in spikes:
-            print(spike)
-    
+    for spike in spikes:
+        assert 'max_slope_time' in spike
     return spikes
 
 
@@ -265,11 +264,8 @@ def detect_vc_evoked_spikes(trace, pulse_edges, ui=None):
             'peak_value': peak,
         })
 
-    if ui is not None:
-        ui.show_spike_lines(spikes)
-        for spike in spikes:
-            print(spike)
-
+    for spike in spikes:
+        assert 'max_slope_time' in spike
     return spikes
 
 
@@ -301,6 +297,7 @@ def max_time(trace):
         is_edge = 0
     return trace.time_at(ind), is_edge
 
+
 def min_time(trace):
     """Return the time of the minimum value in the trace, and a value indicating whether the
     time returned coincides with the first value in the trace (-1), the last value in the
@@ -316,39 +313,156 @@ def min_time(trace):
     return trace.time_at(ind), is_edge
 
 
-class SpikeDetectUI(object):
-    """Used to display details of spike detection analysis.
-    """
+class SpikeDetectTestCase(object):
+
     def __init__(self):
-        import pyqtgraph as pg
-        import pyqtgraph.console
+        self.compare_opts = {'rtol': 0.01}
+        self.test_function = detect_evoked_spikes
+        self._input_args = None
+        self._meta = None
+        self._expected_result = None
+        self._file_path = None
+        self._loaded_file_path = None
 
-        self.pw = pg.GraphicsLayoutWidget()
-        self.plt1 = self.pw.addPlot()
-        self.plt2 = self.pw.addPlot(row=1, col=0)
-        self.plt2.setXLink(self.plt1)
-        self.plt3 = self.pw.addPlot(row=2, col=0)
-        self.plt3.setXLink(self.plt1)
-        
-        self.console = pg.console.ConsoleWidget()
-        
-        self.widget = pg.QtGui.QSplitter(pg.QtCore.Qt.Vertical)
-        self.widget.addWidget(self.pw)        
-        self.widget.addWidget(self.console)
-        self.widget.resize(1000, 900)
-        self.widget.show()
-    
-    def clear(self):
-        self.plt1.clear()
-        self.plt2.clear()
-        self.plt3.clear()
+    def load_file(self, file_path):
+        data = pickle.load(open(file_path, 'rb'))
+        self._input_args = data['input_args']
+        self._expected_result = data['expected_result']
+        self._meta = data['meta']
+        self._loaded_file_path = file_path
 
-    def show_spike_lines(self, spikes):
-        for plt in [self.plt1, self.plt2, self.plt3]:
-            for spike in spikes:
-                if spike['onset_time'] is not None:
-                    plt.addLine(x=spike['onset_time'])
-                if spike['max_slope_time'] is not None:
-                    plt.addLine(x=spike['max_slope_time'], pen='b')
-                if spike['peak_time'] is not None:
-                    plt.addLine(x=spike['peak_time'], pen='g')
+    def _load_old(self, file_path):
+        fh = open(file_path, 'rb')
+        data = pickle.load(fh, encoding='latin1')
+        self._input_args = {
+            'data': data['data'],
+            'pulse_edges': data['pulse_edges'],
+        }
+        self._meta = {
+            'expt_id': data['expt_id'],
+            'sweep_id': data['sweep_id'],
+            'device_id': data['pre_cell_id']-1,
+        }
+        self._expected_result = data['spikes']
+
+    def save_file(self, file_path=None):
+        if file_path is None:
+            file_path = self._loaded_file_path
+
+        info = {
+            'input_args': self.input_args,
+            'expected_result': self.current_result,
+            'meta': self.meta,
+        }
+        tmpfile = file_path + '.tmp'
+        pickle.dump(info, open(tmpfile, 'wb'))
+        os.rename(tmpfile, file_path)
+        print("Updated test file %s" % file_path)
+
+    @property
+    def input_args(self):
+        return self._input_args
+
+    @property
+    def meta(self):
+        return self._meta
+
+    @property
+    def expected_result(self):
+        return self._expected_result
+
+    @property
+    def current_result(self):
+        return self._current_result
+
+    def run_test(self):
+        self._current_result = self.test_function(**self.input_args)
+        self.check_result(self._current_result)
+
+    def audit_test(self, ui):
+        ui.clear()
+
+        # display test data/thresholds and expected result in first panel
+        self.test_function(ui=ui.display1, **self.input_args)
+
+        # display test data/thresholds and current result in second panel
+        self._current_result = self.test_function(ui=ui.display2, **self.input_args)
+        ui.show_results(self.expected_result, self._current_result)
+
+        try:
+            self.check_result(self._current_result)
+        except Exception as exc:
+            traceback.print_exc()
+
+            print("Expected:", self.expected_result)
+            print("Current: ", self.current_result)
+
+            ui.user_passfail()
+
+            # user passed result if we got here
+            self.save_file()
+
+    def check_result(self, result):
+        for spike in result:
+            assert 'max_slope_time' in spike
+            assert 'onset_time' in spike
+            assert 'peak_time' in spike
+
+        self.compare_results(self.expected_result, result, **self.compare_opts)
+
+    def compare_results(self, expected, current, **opts):
+        """
+        Compare *current* result to *expected* result. 
+        
+        If *result* and *expected* do not match, then raise an exception.
+        """
+        # Check test structures are the same
+        self.compare_types(expected, current)
+
+        if hasattr(current, '__len__'):
+            assert len(current) == len(expected)
+            
+        if isinstance(current, dict):
+            for k in current:
+                assert k in expected
+            for k in expected:
+                assert k in current
+                self.compare_results(expected[k], current[k], **opts)
+        elif isinstance(current, list):
+            for i in range(len(current)):
+                self.compare_results(expected[i], current[i], **opts)
+        elif isinstance(current, np.ndarray):
+            assert current.shape == expected.shape
+            if current.dtype.fields is None:
+                intnan = -9223372036854775808  # happens when np.nan is cast to int
+                inans = np.isnan(current) | (current == intnan)
+                enans = np.isnan(expected) | (expected == intnan)
+                assert np.all(inans == enans)
+                mask = ~inans
+                assert np.allclose(current[mask], expected[mask], rtol=opts['rtol'])
+            else:
+                for k in current.dtype.fields.keys():
+                    self.compare_results(expected[k], current[k], **opts)
+        elif np.isscalar(current):
+            assert np.allclose(expected, current, rtol=opts['rtol'])
+        else:
+            try:
+                assert current == expected
+            except AssertionError:
+                raise
+            except Exception:
+                raise NotImplementedError("Cannot compare objects of type %s" % type(current))
+
+    def compare_types(self, a, b):
+        if type(a) is type(b):
+            return
+        if isinstance(a, (float, np.floating)) and isinstance(b, (float, np.floating)):
+            return
+        if isinstance(a, (int, np.integer)) and isinstance(b, (int, np.integer)):
+            return
+        raise TypeError("Types do not match: %s %s" % (type(a), type(b)))
+
+    @property
+    def name(self):
+        meta = self.meta
+        return "%s_%s_%s_%0.3f" % (meta['expt_id'], meta['sweep_id'], meta['device_id'], self.input_args['pulse_edges'][0])
