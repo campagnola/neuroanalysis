@@ -314,13 +314,13 @@ def min_time(trace):
 
 
 class SpikeDetectTestCase(object):
-
     def __init__(self):
         self.compare_opts = {'rtol': 0.01}
         self.test_function = detect_evoked_spikes
         self._input_args = None
         self._meta = None
         self._expected_result = None
+        self._current_result = None
         self._file_path = None
         self._loaded_file_path = None
 
