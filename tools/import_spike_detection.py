@@ -1,6 +1,6 @@
 """Script used to generate evoked spike test data
 
-Usage: import_spike_detection.py expt_id cell_id
+Usage:  python -i import_spike_detection.py expt_id cell_id
 
 This will load all spikes evoked in the specified cell one at a time. 
 For each one you can select whether to write the data out to a new test file.
@@ -8,10 +8,11 @@ Note that files are saved without results; to generate these, you must run
 unit tests with --audit.
 """
 
-import pickle
+import pickle, sys
 import numpy as np
 from scipy.optimize import curve_fit
-from neuroanalysis.spike_detection import detect_evoked_spikes, SpikeDetectUI
+from neuroanalysis.spike_detection import detect_evoked_spikes, SpikeDetectTestCase
+from neuroanalysis.ui.spike_detection import SpikeDetectUI
 from neuroanalysis.data import Trace, TraceList, PatchClampRecording
 from multipatch_analysis.database import default_db as db
 from multipatch_analysis.data import Analyzer, PulseStimAnalyzer, MultiPatchProbe
@@ -35,8 +36,6 @@ session = db.session()
 def iter_pulses():
     """Generator that yields all selected pulses one at a time.
     """
-    print("expt: %0.3f  pair: %d %d" % (expt_id, pre_cell_id, post_cell_id))
-    
     # look up experiment from database and load the NWB file
     expt = db.experiment_from_timestamp(expt_id)
     cell = expt.cells[cell_id]
@@ -66,11 +65,16 @@ last_result = None
 
 def load_next():
     global all_pulses, ui, last_result
-    (expt_id, cell_id, sweep, channel, chunk) = all_pulses.next()
+    try:
+        (expt_id, cell_id, sweep, channel, chunk) = next(all_pulses)
+    except StopIteration:
+        ui.widget.hide()
+        return
 
     # run spike detection on each chunk
     pulse_edges = chunk.meta['pulse_edges']
     spikes = detect_evoked_spikes(chunk, pulse_edges, ui=ui)
+    ui.show_result(spikes)
 
     # copy just the necessary parts of recording data for export to file
     export_chunk = PatchClampRecording(channels={k:Trace(chunk[k].data, t0=chunk[k].t0, sample_rate=chunk[k].sample_rate) for k in chunk.channels})
@@ -95,8 +99,8 @@ def save_and_load_next():
     global last_result
 
     # write results out to test file
-    test_file = 'test_data/evoked_spikes/%s.pkl' % (tc.name)
-    tc.save_file(test_file)
+    test_file = 'test_data/evoked_spikes/%s.pkl' % (last_result.name)
+    last_result.save_file(test_file)
 
     load_next()
 
