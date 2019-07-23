@@ -8,7 +8,7 @@ import numpy as np
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui
 
-from .stats import weighted_std
+from ..stats import weighted_std
 
 
 class FitModel(lmfit.Model):
