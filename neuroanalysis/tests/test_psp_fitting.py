@@ -1,14 +1,39 @@
-'''tests the psp_fits function.  If tests fail can use check_psp_fitting() to 
-explore how fits are different from test data.  Often fitts are just off by
-significant figures.  However, make sure all data is viewed as some fits can 
-can change when others do not
-'''
-from neuroanalysis.fitting import fit_psp
 import os
 import numpy as np
-from pprint import pprint
 import json
 import neuroanalysis.data
+from neuroanalysis.fitting import fit_psp
+from nauroanalysis.ui.psp_fitting import PspFitTestUi
+
+
+path = os.path.join(os.path.dirname(neuroanalysis.__file__), '..', 'test_data', 'test_psp_fit', '*.json')
+psp_files = sorted(glob.glob(path))
+
+test_ui = None
+
+
+@pytest.mark.parametrize('test_file', psp_files)
+def test_spike_detection(request, test_file):
+    global test_ui
+    audit = request.config.getoption('audit')
+    if audit and test_ui is None:
+        test_ui = PspFitTestUi()
+
+    print("test:", test_file)
+    tc = PspFitTestCase()
+    tc.load_file(test_file)
+    if audit:
+        tc.audit_test(test_ui)
+    else:
+        tc.run_test()
+
+
+
+
+
+
+
+
 
 test_data_dir = os.path.join(os.path.dirname(neuroanalysis.__file__), '..', 'test_data', 'test_psp_fit')                                                                                                                                      
 

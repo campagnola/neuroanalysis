@@ -6,8 +6,8 @@ import pyqtgraph.console
 from .user_test import UserTestUi
 
 
-class SpikeDetectUI(object):
-    """Used to display details of spike detection analysis.
+class PspFitUI(object):
+    """Used to display details of PSP/PSC fitting analysis.
     """
     def __init__(self, title=None):
         self.pw = pg.GraphicsLayoutWidget()
@@ -31,21 +31,14 @@ class SpikeDetectUI(object):
         self.plt2.clear()
         self.plt3.clear()
 
-    def show_result(self, spikes):
-        for plt in [self.plt1, self.plt2, self.plt3]:
-            for spike in spikes:
-                if spike.get('onset_time') is not None:
-                    plt.addLine(x=spike['onset_time'])
-                if spike.get('max_slope_time') is not None:
-                    plt.addLine(x=spike['max_slope_time'], pen='b')
-                if spike.get('peak_time') is not None:
-                    plt.addLine(x=spike['peak_time'], pen='g')
+    def show_result(self, fit):
+        pass
 
 
-class SpikeDetectTestUi(UserTestUi):
-    """UI for manually pass/failing spike detection unit tests.
+class PspFitTestUi(UserTestUi):
+    """UI for manually pass/failing PSP fitting unit tests.
     """
     def __init__(self):
-        expected_display = SpikeDetectUI('expected result')
-        current_display = SpikeDetectUI('current result')
-        UserTestUi.__init__(self, expected_display, current_display)
+        expected_display = PspFitUI('expected result')
+        current_display = PspFitUI('current result')
+        UserTestUi.__init__(expected_display, current_display)
