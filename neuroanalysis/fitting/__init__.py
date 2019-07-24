@@ -1,4 +1,5 @@
 from .fitmodel import FitModel
+from .searchfit import SearchFit
 from .gaussian import Gaussian
 from .sigmoid import Sigmoid
 from .exp import Exp, Exp2

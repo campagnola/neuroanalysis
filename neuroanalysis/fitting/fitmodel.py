@@ -19,13 +19,15 @@ class FitModel(lmfit.Model):
     Example uses:
         
         # single exponential fit
-        fit = expfitting.Exp1.fit(data, params=dict(
-                x=time_vals,
+        fit = expfitting.Exp1.fit(
+            data, 
+            x=time_vals,
+            params=dict(
                 xoffset=(0, 'fixed'),           # x offset is fixed at 0
                 yoffset=(yoff_guess, -120, 0),  # y offset is bounded between -120 and 0
                 amp=(amp_guess, 0, 50),         # amp is bounded between 0 and 50
-                tau=(tau_guess, 0.1, 50)))      # tau is bounded between 0.1 and 50
-        
+                tau=(tau_guess, 0.1, 50),       # tau is bounded between 0.1 and 50
+            ))
         # plot the fit
         fit_curve = fit.eval()
         plot(time_vals, fit_curve)
@@ -34,8 +36,10 @@ class FitModel(lmfit.Model):
         # double exponential fit with tau ratio constraint
         # note that 'tau_ratio' does not appear in the exp2 model; 
         # we can define new parameters here.
-        fit = expfitting.Exp2.fit(data, params=dict(
-                x=time_vals,
+        fit = expfitting.Exp2.fit(
+            data, 
+            x=time_vals,
+            params=dict(
                 xoffset=(0, 'fixed'),
                 yoffset=(yoff_guess, -120, 0),
                 amp1=(amp_guess, 0, 50),
@@ -43,7 +47,7 @@ class FitModel(lmfit.Model):
                 amp2=(-0.5, -50, 0),
                 tau_ratio=(10, 3, 50),          # tau_ratio is bounded between 3 and 50
                 tau2='tau1 * tau_ratio'         # tau2 is forced to be tau1 * tau_ratio 
-                ))
+            ))
         
     """
     def fit(self, data, params=None, interactive=False, **kwds):
@@ -145,4 +149,3 @@ class FitModel(lmfit.Model):
         else:
             std = weighted_std(result.data, result.weights)
         return rmse / std
-
