@@ -11,6 +11,7 @@ import json
 import neuroanalysis.data
 
 test_data_dir = os.path.join(os.path.dirname(neuroanalysis.__file__), '..', 'test_data', 'test_psp_fit')                                                                                                                                      
+
     
 def test_psp_fitting():
     """Test psp_fit function against data from test directory.  Note that this 
@@ -27,7 +28,7 @@ def test_psp_fitting():
     test_data_files=[os.path.join(test_data_dir,f) for f in os.listdir(test_data_dir)] #list of test files
     for file in sorted(test_data_files):
 #    for file in ['test_psp_fit/1492546902.92_2_6stacked.json']: order of parameters affects this fit
-        print 'file', file
+        print('file', file)
         test_dict=json.load(open(file)) # load test data
         avg_trace=neuroanalysis.data.Trace(data=np.array(test_dict['input']['data']), dt=test_dict['input']['dt']) # create Trace object
         psp_fits = fit_psp(avg_trace, 
@@ -57,7 +58,7 @@ def check_psp_fitting():
     test_data_files=[os.path.join(test_data_dir,f) for f in os.listdir(test_data_dir)] #list of test files
     for file in sorted(test_data_files):
 #    for file in ['test_psp_fit/1492546902.92_2_6stacked.json']: order of parameters affects this fit
-        print 'file', file
+        print('file', file)
         test_dict=json.load(open(file)) # load test data
         avg_trace=neuroanalysis.data.Trace(data=np.array(test_dict['input']['data']), dt=test_dict['input']['dt']) # create Trace object
         psp_fits = fit_psp(avg_trace, 
@@ -69,21 +70,21 @@ def check_psp_fitting():
         
         change_flag=False
         if test_dict['out']['best_values']!=psp_fits.best_values:     
-            print '  the best values dont match'
-            print '\tsaved', test_dict['out']['best_values']
-            print '\tobtained', psp_fits.best_values
+            print('  the best values dont match')
+            print('\tsaved', test_dict['out']['best_values'])
+            print('\tobtained', psp_fits.best_values)
             change_flag=True
             
         if test_dict['out']['best_fit']!=psp_fits.best_fit.tolist():
-            print '  the best fit traces dont match'
-            print '\tsaved', test_dict['out']['best_fit']
-            print '\tobtained', psp_fits.best_fit.tolist()
+            print('  the best fit traces dont match')
+            print('\tsaved', test_dict['out']['best_fit'])
+            print('\tobtained', psp_fits.best_fit.tolist())
             change_flag=True
         
         if test_dict['out']['nrmse']!=float(psp_fits.nrmse()):
-            print '  the nrmse doesnt match'
-            print '\tsaved', test_dict['out']['nrmse']
-            print '\tobtained', float(psp_fits.nrmse())
+            print('  the nrmse doesnt match')
+            print('\tsaved', test_dict['out']['nrmse'])
+            print('\tobtained', float(psp_fits.nrmse()))
             change_flag=True
             
         if plotting:
@@ -237,7 +238,7 @@ def save_fit_psp_test_set():
                             avg_trace, avg_amp, amp_sign, peak_t = get_amplitude(qc_list)
     #                        if amp_sign is '-':
     #                            continue
-    #                        #print ('%s, %0.0f' %((expt.uid, pre, post), hold, ))
+    #                        #print(('%s, %0.0f' %((expt.uid, pre, post), hold, )))
     #                        all_amps = fail_rate(response_subset, '+', peak_t)
     #                        cv = np.std(all_amps)/np.mean(all_amps)
     #                        
@@ -287,11 +288,11 @@ def save_fit_psp_test_set():
                                                stacked=save_dict['input']['stacked'], 
                                                rise_time_mult_factor=save_dict['input']['rise_time_mult_factor'], 
                                                fit_kws={'weights': save_dict['input']['weight']})  
-                            print expt.uid, pre, post    
+                            print(expt.uid, pre, post    )
                             if psp_fits_original.nrmse()!=psp_fits_simple.nrmse():     
-                                print '  the nrmse values dont match'
-                                print '\toriginal', psp_fits_original.nrmse()
-                                print '\tsimple', psp_fits_simple.nrmse()
+                                print('  the nrmse values dont match')
+                                print('\toriginal', psp_fits_original.nrmse())
+                                print('\tsimple', psp_fits_simple.nrmse())
     
     
                             

@@ -1,5 +1,6 @@
 from __future__ import print_function, division
 
+import sys
 import numpy as np
 import scipy.optimize
 from .fitmodel import FitModel
@@ -33,22 +34,6 @@ class Psp(FitModel):
     This provides a flatter error surface to fit against, avoiding some of the
     tradeoff between parameters that Exp2 suffers from.
     """
-    # default guess / bounds:
-
-    # if guess is None:
-    #     guess = [
-    #         (y.max()-y.min()) * 2,
-    #         0, 
-    #         x[-1]*0.25,
-    #         x[-1]
-    #     ]
-    
-    # if bounds is None:
-    #     bounds = [[None,None]] * 4
-    #     bounds[1][0] = -2e-3
-    #     minTau = (x[1]-x[0]) * 0.5
-    #     #bounds[2] = [minTau, None]
-    #     #bounds[3] = [minTau, None]
 
     def __init__(self):
         FitModel.__init__(self, self.psp_func, independent_vars=['x'])
@@ -65,10 +50,8 @@ class Psp(FitModel):
     @staticmethod
     def psp_func(x, xoffset, yoffset, rise_time, decay_tau, amp, rise_power):
         """Function approximating a PSP shape. 
-
         """
         rise_tau = Psp._compute_rise_tau(rise_time, rise_power, decay_tau)
-        #decay_tau = (rise_tau / rise_power) * (np.exp(rise_time / rise_tau) - 1)
         max_val = Psp._psp_inner(rise_time, rise_tau, decay_tau, rise_power)
         
         xoff = x - xoffset
@@ -140,7 +123,6 @@ class PspTrain(FitModel):
         return tot + yoffset
 
 
-
 class Psp2(FitModel):
     """PSP-like fitting model with double-exponential decay.
     
@@ -169,65 +151,16 @@ class Psp2(FitModel):
         return out
 
 
-def create_all_fit_param_combos(base_params):
-    '''Convert the parameters fed to fit_psp into a list of all possible parameter 
-    dictionaries to be fed to PSP() or stackedPSP() for fitting. 
-    
-    Parameters 
-    ----------
-    base_params: dictionary
-        Each value in the key:value dictionary pair must be a tuple.
-        In general the structure of the tuple is of the form, 
-        (initial conditions, lower boundary, higher boundary).
-        The initial conditions can be either a number or a list 
-        of numbers specifying several initial conditions.  The 
-        initial condition may also be fixed by replacing the lower 
-        higher boundary combination with 'fixed'.
-        Note that technically the value of a key:value pair could 
-        be a single string (this ends up being evaluated as an 
-        expression by lmfit later on).
-    
-    Returns
-    -------
-    param_dict_list: list of dictionaries
-        Each dictionary contains parameter inputs for one fit_psp run.
-        
-    Examples:    
-    base_params[amplitude]=(10, 0, 20)
-    base_params[amplitude]=(10, 'fixed')
-    base_params[amplitude]=([5,10, 20], 0, 20)
-    base_params[amplitude]=([5,10, 20], 'fixed')
-    
-    '''
-    # need to create all combinations of the initial conditions
-    param_dict_list = [{}] #initialize list
-    for key, value in base_params.items():
-        if isinstance(value[0], list):
-            temp_list=[]
-            for init_cond in value[0]: #for each initial condition
-                temp=[pdl.copy() for pdl in param_dict_list] #copy each parameter dictionary in the list so they do not point back to the original dictionary
-                for t in temp:  #for each dictionary in the list 
-                    t[key]=tuple([init_cond] +list(value[1:])) #add the key and single initial condition pair
-                temp_list=temp_list+temp
-            param_dict_list=list(temp_list) #Note this works because the dictionaries are already made immutable above
-        else: 
-            for pdl in param_dict_list:
-                pdl[key]=value
-    
-    return param_dict_list
-
-
-def fit_psp(response, 
-            xoffset, # this parameter will be fit.
+def fit_psp(data, 
+            xoffset,
             clamp_mode='ic', 
-            sign='any', #Note this will not be used if *amp* input is specified
+            sign='any',  # Note this will not be used if *amp* input is specified
             method='leastsq', 
             fit_kws=None, 
             stacked=True,
-            rise_time_mult_factor=10., #Note this will not be used if *rise_time* input is specified 
+            rise_time_mult_factor=10.,  # Note this will not be used if *rise_time* input is specified 
             weight=None,
             amp_ratio=None, 
-            # the following are parameters that can be fit 
             amp=None,
             decay_tau=None,
             rise_power=None,
@@ -238,7 +171,7 @@ def fit_psp(response,
 
     Parameters
     ----------
-    response : neuroanalysis.data.Trace class
+    data : neuroanalysis.data.Trace instance
         Contains data on trace waveform.
     clamp_mode : string
         either 'ic' for current clamp or 'vc' for voltage clamp
@@ -256,8 +189,8 @@ def fit_psp(response,
         the PSP shape on top of a baseline exponential decay, which is useful when the
         PSP follows close after another PSP or action potential.
         See *amp_ratio* to bound the amplitude of the baseline exponential.
-    weight : numpy array, size equal to data waveform, default: np.ones(len(response.data))
-        assigns relative weights to each data point in waveform for fitting.
+    weight : numpy array
+        assigns relative weights to each data point in waveform for fitting. 
     fit_kws : dict
         Additional key words that are fed to lmfit
     The parameters below are fed to the psp function. Each value in the 
@@ -275,7 +208,7 @@ def fit_psp(response,
             amplitude=([5,10, 20], 0, 20)
             amplitude=([5,10, 20], 'fixed') 
         xoffset : tuple
-            Time where psp begins in reference to the start of *response*.
+            Time where psp begins in reference to the start of *data*.
             Note that this parameter must be specified by user.
             Example: ``(14e-3, -float('inf'), float('int'))``
         yoffset : tuple
@@ -302,9 +235,9 @@ def fit_psp(response,
     """           
     
     # extracting these for ease of use
-    t = response.time_values
-    y = response.data
-    dt = response.dt
+    t = data.time_values
+    y = data.data
+    dt = data.dt
     
     # set initial conditions depending on whether in voltage or current clamp
     # note that sign of these will automatically be set later on based on the 
@@ -373,7 +306,11 @@ def fit_psp(response,
     best_fit = None
     best_score = None
     for p in param_dict_list:
-        fit = psp.fit(y, x=t, params=p, fit_kws=fit_kws, method=method)
+        try:
+            fit = psp.fit(y, x=t, params=p, fit_kws=fit_kws, method=method)
+        except Exception:
+            print("Error in PSP fit:")
+            sys.excepthook(*sys.exc_info())
         err = np.sum(fit.residual**2)  # note: using this because normalized (nrmse) is not necessary to comparing fits within the same data set
         if best_fit is None or err < best_score:
             best_fit = fit
@@ -381,9 +318,9 @@ def fit_psp(response,
     fit = best_fit
 
     # nrmse = fit.nrmse()
-    if 'baseline_std' in response.meta:
-        fit.snr = abs(fit.best_values['amp']) / response.meta['baseline_std']
-        fit.err = fit.nrmse() / response.meta['baseline_std']
+    if 'baseline_std' in data.meta:
+        fit.snr = abs(fit.best_values['amp']) / data.meta['baseline_std']
+        fit.err = fit.nrmse() / data.meta['baseline_std']
 
     return fit
 
