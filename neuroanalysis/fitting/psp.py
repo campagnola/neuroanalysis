@@ -1,9 +1,10 @@
 from __future__ import print_function, division
 
-import sys
+import sys, json
 import numpy as np
 import scipy.optimize
 from .fitmodel import FitModel
+from ..data import Trace
 
 
 class Psp(FitModel):
@@ -329,3 +330,32 @@ def fit_psp(data,
 
     return fit
 
+
+class PspFitTestCase(DataTestCase):
+    def __init__(self):
+        DataTestCase.__init__(self, detect_evoked_spikes)
+
+    def check_result(self, result):
+        for spike in result:
+            assert 'max_slope_time' in spike
+            assert 'onset_time' in spike
+            assert 'peak_time' in spike
+        DataTestCase.check_result(self, result)
+
+    @property
+    def name(self):
+        meta = self.meta
+        return "%s_%s_%s_%0.3f" % (meta['expt_id'], meta['sweep_id'], meta['device_id'], self.input_args['pulse_edges'][0])
+
+    def _old_load_file(self, file_path):
+        test_data = json.load(open(file_path))
+        self._input_args = {
+            'data': Trace(data=np.array(test_data['input']['data']), dt=test_data['input']['dt']),
+            'xoffset': (14e-3, -float('inf'), float('inf')),
+            'weight': np.array(test_data['input']['weight']),
+            'sign': test_data['input']['amp_sign'], 
+            'stacked': test_data['input']['stacked'],
+        }
+        self._expected_result = test_data['out']['best_values']
+        self._meta = {}
+        self._loaded_file_path = file_path

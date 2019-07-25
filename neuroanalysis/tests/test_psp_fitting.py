@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import pytest
 import json
 import neuroanalysis.data
 from neuroanalysis.fitting import fit_psp
