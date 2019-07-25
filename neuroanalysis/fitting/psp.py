@@ -165,7 +165,8 @@ def fit_psp(data,
             decay_tau=None,
             rise_power=None,
             rise_time=None,
-            yoffset=None
+            yoffset=None,
+            ui=None,
             ):
     """Fit psp waveform to the equation specified in the PSP class in neuroanalysis.fitting
 
@@ -233,6 +234,10 @@ def fit_psp(data,
     fit : lmfit.model.ModelResult
         Best fit
     """           
+    if ui is not None:
+        ui.clear()
+        ui.console.setStack()
+        ui.plt1.plot(data.time_values, data.data)
     
     # extracting these for ease of use
     t = data.time_values
