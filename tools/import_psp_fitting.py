@@ -60,7 +60,7 @@ def iter_pulses():
 
         # Get chunks for each stim pulse        
         analyzer = MultiPatchSyncRecAnalyzer.get(sweep)
-        pulse_responses = analyzer.get_spike_responses(pre_rec, post_rec)
+        pulse_responses = analyzer.get_spike_responses(pre_rec, post_rec, pre_pad=10e-3, require_spike=True)
         for pr in pulse_responses:
             yield (expt_id, pre_cell_id, post_cell_id, sweep, pr)
 
@@ -75,28 +75,39 @@ def load_next():
     except StopIteration:
         ui.widget.hide()
         return
+    print(expt_id, pre_cell_id, post_cell_id, sweep, pr['pulse_n'])
 
     # run psp fit on each chunk
-    pulse_edges = chunk.meta['pulse_edges']
-    fit = fit_psp(pr, ui=ui)
-    ui.show_result(spikes)
+    spiketime = pr['spikes'][0]['max_slope_time']
+    if spiketime is None:
+        print("  skip - unknown spike time")
+        load_next()
+        return
+        
+    rec = pr['response']
+    kwds = {
+        'data': rec['primary'], 
+        'clamp_mode': rec.clamp_mode,
+        'xoffset': (spiketime+1e-3, spiketime, spiketime+8e-3),
+    }
+    fit = fit_psp(ui=ui, **kwds)
+    ui.show_result(fit)
 
     # copy just the necessary parts of recording data for export to file
-    export_chunk = PatchClampRecording(channels={k:Trace(chunk[k].data, t0=chunk[k].t0, sample_rate=chunk[k].sample_rate) for k in chunk.channels})
-    export_chunk.meta.update(chunk.meta)
+    data = kwds['data']
+    export_data = Trace(data.data, t0=data.t0, dt=data.meta['dt'], sample_rate=data.meta['sample_rate'])
+    kwds['data'] = export_data
 
-    # construct test case    
-    tc = SpikeDetectTestCase()
+    # construct test case
+    tc = PspFitTestCase()
     tc._meta = {
         'expt_id': expt_id,
-        'cell_id': cell_id,
-        'device_id': channel,
+        'pre_cell_id': pre_cell_id,
+        'post_cell_id': post_cell_id,
         'sweep_id': sweep.key,
+        'pulse_n': pr['pulse_n'],
     }
-    tc._input_args = {
-        'data': export_chunk,
-        'pulse_edges': chunk.meta['pulse_edges'],
-    }
+    tc._input_args = kwds
     last_result = tc
 
 
@@ -104,7 +115,7 @@ def save_and_load_next():
     global last_result
 
     # write results out to test file
-    test_file = 'test_data/evoked_spikes/%s.pkl' % (last_result.name)
+    test_file = 'test_data/evoked_synaptic_events/%s.pkl' % (last_result.name)
     last_result.save_file(test_file)
 
     load_next()

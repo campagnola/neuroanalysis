@@ -5,6 +5,7 @@ import numpy as np
 import scipy.optimize
 from .fitmodel import FitModel
 from ..data import Trace
+from ..util.data_test import DataTestCase
 
 
 class Psp(FitModel):
@@ -239,6 +240,8 @@ def fit_psp(data,
         ui.clear()
         ui.console.setStack()
         ui.plt1.plot(data.time_values, data.data)
+
+    fit_kws = fit_kws or {}
     
     # extracting these for ease of use
     t = data.time_values
@@ -267,7 +270,6 @@ def fit_psp(data,
     elif sign == '+':
         amp_default = (amp_init, 0, amp_max)
     elif sign == 'any':
-        warnings.warn("You are not specifying the predicted sign of your psp.  This may slow down or mess up fitting")
         amp_default = (0, -amp_max, amp_max)
     else:
         raise ValueError('sign must be "+", "-", or "any"')
@@ -285,43 +287,30 @@ def fit_psp(data,
     # specify fitting function and set up conditions
     if not isinstance(stacked, bool):
         raise Exception("Stacked must be True or False")
+    
+    psp = StackedPsp()
     if stacked:
-        psp = StackedPsp()
         base_params.update({
             #TODO: figure out the bounds on these
             'amp_ratio': amp_ratio or (0, -100, 100),
             'exp_amp': 'amp * amp_ratio',
         })  
     else:
-        psp = Psp()
+        base_params.update({'exp_amp': 0})
     
-    # set weighting that 
     if weight is None: #use default weighting
         weight = np.ones(len(y))
     else:  #works if there is a value specified in weight
         if len(weight) != len(y):
             raise Exception('the weight and array vectors are not the same length') 
     
-    # arguement to be passed through to fitting function
-    fit_kws = {'weights': weight}   
+    fit_kws['weights'] = weight
 
-    # convert initial parameters into a list of dictionaries to be consumed by psp.fit()        
-    param_dict_list = create_all_fit_param_combos(base_params)
+    if ui is not None:
+        ui.plt1.addLine(x=base_params['xoffset'][1], pen=0.3)
+        ui.plt1.addLine(x=base_params['xoffset'][2], pen=0.3)
 
-    # cycle though different parameters sets and chose best one
-    best_fit = None
-    best_score = None
-    for p in param_dict_list:
-        try:
-            fit = psp.fit(y, x=t, params=p, fit_kws=fit_kws, method=method)
-        except Exception:
-            print("Error in PSP fit:")
-            sys.excepthook(*sys.exc_info())
-        err = np.sum(fit.residual**2)  # note: using this because normalized (nrmse) is not necessary to comparing fits within the same data set
-        if best_fit is None or err < best_score:
-            best_fit = fit
-            best_score = err
-    fit = best_fit
+    fit = psp.fit(y, x=t, params=base_params, fit_kws=fit_kws, method=method)
 
     # nrmse = fit.nrmse()
     if 'baseline_std' in data.meta:
@@ -333,19 +322,18 @@ def fit_psp(data,
 
 class PspFitTestCase(DataTestCase):
     def __init__(self):
-        DataTestCase.__init__(self, detect_evoked_spikes)
+        DataTestCase.__init__(self, PspFitTestCase.fit_psp)
 
-    def check_result(self, result):
-        for spike in result:
-            assert 'max_slope_time' in spike
-            assert 'onset_time' in spike
-            assert 'peak_time' in spike
-        DataTestCase.check_result(self, result)
+    @staticmethod
+    def fit_psp(**kwds):
+        result = fit_psp(**kwds)
+        # for storing / comparing fit results, we need to return a dict instead of ModelResult
+        return result.best_values
 
     @property
     def name(self):
         meta = self.meta
-        return "%s_%s_%s_%0.3f" % (meta['expt_id'], meta['sweep_id'], meta['device_id'], self.input_args['pulse_edges'][0])
+        return "%0.3f_%s_%s_%s_%s" % (meta['expt_id'], meta['sweep_id'], meta['pre_cell_id'], meta['post_cell_id'], meta['pulse_n'])
 
     def _old_load_file(self, file_path):
         test_data = json.load(open(file_path))

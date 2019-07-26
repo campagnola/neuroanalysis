@@ -1,8 +1,10 @@
 from __future__ import division, print_function
 
 import time
+import numpy as np
 import pyqtgraph as pg
 import pyqtgraph.console
+from ..fitting.psp import StackedPsp
 from .user_test import UserTestUi
 
 
@@ -32,7 +34,15 @@ class PspFitUI(object):
         self.plt3.clear()
 
     def show_result(self, fit):
-        pass
+        if fit is None:
+            return
+        if not isinstance(fit, dict):
+            fit = fit.best_values
+        psp = StackedPsp()
+        x = np.linspace(fit['xoffset']-10e-3, fit['xoffset']+30e-3, 5000)
+        y = psp.eval(x=x, **fit)
+        self.plt1.plot(x, y, pen='g')
+        
 
 
 class PspFitTestUi(UserTestUi):
@@ -41,4 +51,4 @@ class PspFitTestUi(UserTestUi):
     def __init__(self):
         expected_display = PspFitUI('expected result')
         current_display = PspFitUI('current result')
-        UserTestUi.__init__(expected_display, current_display)
+        UserTestUi.__init__(self, expected_display, current_display)

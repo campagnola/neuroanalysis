@@ -1,4 +1,4 @@
-import pickle, traceback
+import os, pickle, traceback
 import numpy as np
 
 
@@ -81,11 +81,6 @@ class DataTestCase(object):
             self.save_file()
 
     def check_result(self, result):
-        for spike in result:
-            assert 'max_slope_time' in spike
-            assert 'onset_time' in spike
-            assert 'peak_time' in spike
-
         self.compare_results(self.expected_result, result, **self.compare_opts)
 
     def compare_results(self, expected, current, **opts):
