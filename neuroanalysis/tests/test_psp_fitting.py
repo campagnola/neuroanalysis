@@ -14,7 +14,7 @@ test_ui = None
 
 
 @pytest.mark.parametrize('test_file', psp_files)
-def test_spike_detection(request, test_file):
+def test_psp_fitting(request, test_file):
     global test_ui
     audit = request.config.getoption('audit')
     if audit and test_ui is None:

@@ -78,7 +78,7 @@ def load_next():
 
     # run psp fit on each chunk
     pulse_edges = chunk.meta['pulse_edges']
-    spikes = detect_evoked_spikes(chunk, pulse_edges, ui=ui)
+    fit = fit_psp(pr, ui=ui)
     ui.show_result(spikes)
 
     # copy just the necessary parts of recording data for export to file
