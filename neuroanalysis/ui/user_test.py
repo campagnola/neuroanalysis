@@ -45,7 +45,7 @@ class UserTestUi(object):
             last_btn_clicked = self.last_btn_clicked
             self.last_btn_clicked = None
 
-            if last_btn_clicked == 'fail':
+            if last_btn_clicked == 'fail' or not self.widget.isVisible():
                 raise Exception("User rejected test result.")
             elif last_btn_clicked == 'pass':
                 break

@@ -3,9 +3,10 @@ from __future__ import print_function, division
 import sys, json
 import numpy as np
 import scipy.optimize
-from .fitmodel import FitModel
 from ..data import Trace
 from ..util.data_test import DataTestCase
+from .fitmodel import FitModel
+from .searchfit import SearchFit
 
 
 class Psp(FitModel):
@@ -158,7 +159,8 @@ def fit_psp(data, search_window, clamp_mode, sign='any', exp_baseline=True, para
     
     This function is a higher-level interface to StackedPsp.fit:    
     * Makes some assumptions about typical PSP/PSC properties based on the clamp mode
-    * Uses SearchFit to find a better fit over a wide search window
+    * Uses SearchFit to find a better fit over a wide search window, and to avoid
+      common local-minimum traps.
 
     Parameters
     ----------
@@ -178,7 +180,6 @@ def fit_psp(data, search_window, clamp_mode, sign='any', exp_baseline=True, para
         Override parameters to send to the fitting function (see StackedPsp.fit)
     fit_kws : dict
         Extra keyword arguments to send to the minimizer
-    
     
     Returns
     -------
@@ -222,7 +223,6 @@ def fit_psp(data, search_window, clamp_mode, sign='any', exp_baseline=True, para
         
     # initial condition, lower boundary, upper boundary
     base_params = {
-        'xoffset': xoffset,
         'yoffset': (0, -float('inf'), float('inf')),
         'rise_time': (rise_time_init, rise_time_init/10., rise_time_init*10.),
         'decay_tau': (decay_tau_init, decay_tau_init/10., decay_tau_init*10.),
@@ -231,29 +231,31 @@ def fit_psp(data, search_window, clamp_mode, sign='any', exp_baseline=True, para
     }
     
     # specify fitting function and set up conditions
-    if not isinstance(stacked, bool):
-        raise Exception("Stacked must be True or False")
-    
     psp = StackedPsp()
-    if stacked:
-        base_params.update({
-            #TODO: figure out the bounds on these
-            'amp_ratio': amp_ratio or (0, -100, 100),
-            'exp_amp': 'amp * amp_ratio',
-        })  
+    if exp_baseline:
+        base_params.update({'exp_amp': (0, -float('inf'), float('inf'))})  
     else:
         base_params.update({'exp_amp': 0})
     
-    if weight is None: #use default weighting
-        weight = np.ones(len(y))
-    else:  #works if there is a value specified in weight
-        if len(weight) != len(y):
-            raise Exception('the weight and array vectors are not the same length') 
-    
-    fit_kws['weights'] = weight
+    # if weight is None: #use default weighting
+    #     weight = np.ones(len(y))
+    # else:  #works if there is a value specified in weight
+    #     if len(weight) != len(y):
+    #         raise Exception('the weight and array vectors are not the same length')     
+    # fit_kws['weights'] = weight
 
+    # Decide how to search xoffset
+    n_xoffset_chunks = int((search_window[1] - search_window[0]) / 0.3e-3)
+    xoffset_chunks = np.linspace(search_window[0], search_window[1], n_xoffset_chunks)
+    xoffset = [{'xoffset': ((a+b)/2., a, b)} for a,b in zip(xoffset_chunks[:-1], xoffset_chunks[1:])]
 
-    fit = psp.fit(y, x=t, params=base_params, fit_kws=fit_kws, method=method)
+    # Search rise time to avoid traps
+    rise_time_inits = base_params['rise_time'][0] * 1.2**np.arange(6)
+    rise_time = [{'rise_time': (x,) + base_params['rise_time'][1:]} for x in rise_time_inits]
+
+    # Find best fit 
+    search = SearchFit(psp, [rise_time, xoffset], params=base_params, x=data.time_values, data=data.data, fit_kws=fit_kws)
+    fit = search.best_result
 
     # nrmse = fit.nrmse()
     if 'baseline_std' in data.meta:
@@ -271,7 +273,9 @@ class PspFitTestCase(DataTestCase):
     def fit_psp(**kwds):
         result = fit_psp(**kwds)
         # for storing / comparing fit results, we need to return a dict instead of ModelResult
-        return result.best_values
+        ret = result.best_values.copy()
+        ret['nrmse'] = result.nrmse()
+        return ret
 
     @property
     def name(self):
@@ -290,3 +294,9 @@ class PspFitTestCase(DataTestCase):
         self._expected_result = test_data['out']['best_values']
         self._meta = {}
         self._loaded_file_path = file_path
+
+    def load_file(self, file_path):
+        DataTestCase.load_file(self, file_path)
+        xoff = self._input_args.pop('xoffset', None)
+        if xoff is not None:
+            self._input_args['search_window'] = xoff[1:]
