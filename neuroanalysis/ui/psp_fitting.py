@@ -14,24 +14,18 @@ class PspFitUI(object):
     def __init__(self, title=None):
         self.pw = pg.GraphicsLayoutWidget()
         self.plt1 = self.pw.addPlot(title=title)
-        self.plt2 = self.pw.addPlot(row=1, col=0)
-        self.plt2.setXLink(self.plt1)
-        self.plt3 = self.pw.addPlot(row=2, col=0)
-        self.plt3.setXLink(self.plt1)
         
         self.console = pg.console.ConsoleWidget()
         
         self.widget = pg.QtGui.QSplitter(pg.QtCore.Qt.Vertical)
         self.widget.addWidget(self.pw)        
         self.widget.addWidget(self.console)
-        self.widget.resize(1000, 900)
-        self.widget.setSizes([800, 200])
+        self.widget.resize(1000, 600)
+        self.widget.setSizes([400, 200])
         self.widget.show()
     
     def clear(self):
         self.plt1.clear()
-        self.plt2.clear()
-        self.plt3.clear()
 
     def show_result(self, fit):
         if fit is None:
@@ -52,3 +46,5 @@ class PspFitTestUi(UserTestUi):
         expected_display = PspFitUI('expected result')
         current_display = PspFitUI('current result')
         UserTestUi.__init__(self, expected_display, current_display)
+        expected_display.plt1.setXLink(current_display.plt1)
+        expected_display.plt1.setYLink(current_display.plt1)

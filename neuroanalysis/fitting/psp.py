@@ -154,7 +154,7 @@ class Psp2(FitModel):
         return out
 
 
-def fit_psp(data, search_window, clamp_mode, sign='any', exp_baseline=True, params=None, fit_kws=None, ui=None):
+def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, params=None, fit_kws=None, ui=None):
     """Fit a Trace instance to a StackedPsp model.
     
     This function is a higher-level interface to StackedPsp.fit:    
@@ -170,9 +170,8 @@ def fit_psp(data, search_window, clamp_mode, sign='any', exp_baseline=True, para
         start, stop range over which to search for PSP onset.
     clamp_mode : string
         either 'ic' for current clamp or 'vc' for voltage clamp
-    sign : string
-        Specifies the sign of the PSP deflection.  Must be '+', '-', or any. If *amp* 
-        is specified, value will be irrelevant.
+    sign : int
+        Specifies the sign of the PSP deflection. Must be 1, -1, or 0.
     exp_baseline : bool
         If True, then the pre-response baseline is fit to an exponential decay. 
         This is useful when the PSP follows close after another PSP or action potential.
@@ -194,7 +193,7 @@ def fit_psp(data, search_window, clamp_mode, sign='any', exp_baseline=True, para
         ui.plt1.addLine(x=search_window[1], pen=0.3)
 
     fit_kws = fit_kws or {
-        'maxfev': 15,
+        'maxfev': 20,
     }
     
     # set initial conditions depending on whether in voltage or current clamp
@@ -214,14 +213,14 @@ def fit_psp(data, search_window, clamp_mode, sign='any', exp_baseline=True, para
         raise ValueError('clamp_mode must be "ic" or "vc"')
 
     # Set up amplitude initial values and boundaries depending on whether *sign* are positive or negative
-    if sign == '-':
+    if sign == -1:
         amp = (-amp_init, -amp_max, 0)
-    elif sign == '+':
+    elif sign == 1:
         amp = (amp_init, 0, amp_max)
-    elif sign == 'any':
+    elif sign == 0:
         amp = (0, -amp_max, amp_max)
     else:
-        raise ValueError('sign must be "+", "-", or "any"')
+        raise ValueError('sign must be 1, -1, or 0')
         
     # initial condition, lower boundary, upper boundary
     base_params = {
@@ -264,16 +263,29 @@ def fit_psp(data, search_window, clamp_mode, sign='any', exp_baseline=True, para
     # Round 2: fine fit
 
     # Fine search xoffset
-    n_xoffset_chunks = 8
+    n_xoffset_chunks = 4
     xoffset_chunks = np.linspace(fit['xoffset']-1e-3, fit['xoffset']+1e-3, n_xoffset_chunks)
     xoffset = [{'xoffset': ((a+b)/2., a, b)} for a,b in zip(xoffset_chunks[:-1], xoffset_chunks[1:])]
 
-    # Search rise time to avoid traps
-    rise_time_inits = base_params['rise_time'][0] * 1.2**np.arange(6)
+    # Search amp / rise time / decay tau to avoid traps
+    rise_time_inits = base_params['rise_time'][0] * 1.2**np.arange(-1,6)
     rise_time = [{'rise_time': (x,) + base_params['rise_time'][1:]} for x in rise_time_inits]
 
+    decay_tau_inits = base_params['decay_tau'][0] * 2.0**np.arange(-1,2)
+    decay_tau = [{'decay_tau': (x,) + base_params['decay_tau'][1:]} for x in decay_tau_inits]
+    
+    # amp_init = base_params['amp'][0]
+    # amp = [{'amp': (x,) + base_params['amp'][1:]} for x in [amp_init/0.5, amp_init*4.0]]
+    
+    search_params = [
+        rise_time, 
+        decay_tau, 
+        # amp, 
+        xoffset,
+    ]
+
     # Find best fit 
-    search = SearchFit(psp, [rise_time, xoffset], params=base_params, x=data.time_values, data=data.data, fit_kws=fit_kws)
+    search = SearchFit(psp, search_params, params=base_params, x=data.time_values, data=data.data, fit_kws=fit_kws)
     fit = search.best_result
 
     # nrmse = fit.nrmse()

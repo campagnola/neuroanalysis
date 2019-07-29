@@ -6,13 +6,16 @@ class UserTestUi(object):
     def __init__(self, expected_display, current_display):
         pg.mkQApp()
 
-        self.widget = pg.QtGui.QSplitter(pg.QtCore.Qt.Horizontal)
+        self.widget = pg.QtGui.QSplitter(pg.QtCore.Qt.Vertical)
         self.widget.resize(1600, 1000)
 
+        self.display_splitter = pg.QtGui.QSplitter(pg.QtCore.Qt.Horizontal)
+        self.widget.addWidget(self.display_splitter)
+        
         self.display1 = expected_display
         self.display2 = current_display
-        self.widget.addWidget(self.display1.widget)
-        self.widget.addWidget(self.display2.widget)
+        self.display_splitter.addWidget(self.display1.widget)
+        self.display_splitter.addWidget(self.display2.widget)
 
         self.ctrl = pg.QtGui.QWidget()
         self.widget.addWidget(self.ctrl)
@@ -30,7 +33,7 @@ class UserTestUi(object):
         self.fail_btn.clicked.connect(self.fail_clicked)
 
         self.last_btn_clicked = None
-        self.widget.setSizes([400, 400, 800])
+        self.widget.setSizes([750, 250])
 
     def pass_clicked(self):
         self.last_btn_clicked = 'pass'
