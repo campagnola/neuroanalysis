@@ -153,83 +153,32 @@ class Psp2(FitModel):
         return out
 
 
-def fit_psp(data, 
-            xoffset,
-            clamp_mode='ic', 
-            sign='any',  # Note this will not be used if *amp* input is specified
-            method='leastsq', 
-            fit_kws=None, 
-            stacked=True,
-            rise_time_mult_factor=10.,  # Note this will not be used if *rise_time* input is specified 
-            weight=None,
-            amp_ratio=None, 
-            amp=None,
-            decay_tau=None,
-            rise_power=None,
-            rise_time=None,
-            yoffset=None,
-            ui=None,
-            ):
-    """Fit psp waveform to the equation specified in the PSP class in neuroanalysis.fitting
+def fit_psp(data, search_window, clamp_mode, sign='any', exp_baseline=True, params=None, fit_kws=None, ui=None):
+    """Fit a Trace instance to a StackedPsp model.
+    
+    This function is a higher-level interface to StackedPsp.fit:    
+    * Makes some assumptions about typical PSP/PSC properties based on the clamp mode
+    * Uses SearchFit to find a better fit over a wide search window
 
     Parameters
     ----------
     data : neuroanalysis.data.Trace instance
         Contains data on trace waveform.
+    search_window : tuple
+        start, stop range over which to search for PSP onset.
     clamp_mode : string
         either 'ic' for current clamp or 'vc' for voltage clamp
     sign : string
         Specifies the sign of the PSP deflection.  Must be '+', '-', or any. If *amp* 
         is specified, value will be irrelevant.
-    method : string 
-        Method lmfit uses for optimization
-    rise_time_mult_factor: float
-        Parameter that goes into the default calculation rise time.  
-        Note that if an input for *rise_time* is provided this input
-        will be irrelevant.
-    stacked : True or False
-        If True, use the :class:`StackedPsp` model function. This model fits
-        the PSP shape on top of a baseline exponential decay, which is useful when the
-        PSP follows close after another PSP or action potential.
-        See *amp_ratio* to bound the amplitude of the baseline exponential.
-    weight : numpy array
-        assigns relative weights to each data point in waveform for fitting. 
+    exp_baseline : bool
+        If True, then the pre-response baseline is fit to an exponential decay. 
+        This is useful when the PSP follows close after another PSP or action potential.
+    params : dict
+        Override parameters to send to the fitting function (see StackedPsp.fit)
     fit_kws : dict
-        Additional key words that are fed to lmfit
-    The parameters below are fed to the psp function. Each value in the 
-        key:value dictionary pair must be a tuple.
-        In general the structure of the tuple is of the form, 
-        (initial conditions, lower boundary, higher boundary).
-        The initial conditions can be either a number or a list 
-        of numbers specifying several initial conditions.  The 
-        initial condition may also be fixed by replacing the lower 
-        higher boundary combination with 'fixed'. If nothing is 
-        supplied defaults will be used.    
-        Examples:    
-            amplitude=(10, 0, 20)
-            amplitude=(10, 'fixed')
-            amplitude=([5,10, 20], 0, 20)
-            amplitude=([5,10, 20], 'fixed') 
-        xoffset : tuple
-            Time where psp begins in reference to the start of *data*.
-            Note that this parameter must be specified by user.
-            Example: ``(14e-3, -float('inf'), float('int'))``
-        yoffset : tuple
-            Vertical offset of rest.  Note that default of zero assumes rest has been subtracted from traces.
-            Default is ``(0, -float('inf'), float('inf')``.
-        rise_time : tuple
-            Time from beginning of psp until peak. Default initial condition is 5 ms for current clamp
-            or 1 ms for voltage clamp. Default bounds are calculated using *rise_time_mult_factor*.
-        decay_tau : tuple
-            Decay time constant. Default initial condition is 50 ms for current clamp
-            or 4 ms for voltage clamp. Default bounds are from 0.1 to 10 times the initial value.
-        rise_power : tuple
-            Exponent for the rising phase; larger values result in a slower activation. Default is
-            ``(2.0, 'fixed')``.
-        amp_ratio : tuple
-            Ratio of the amplitude of the baseline exponential decay to the amplitude of the PSP.
-            This parameter is used when *stacked* is True in order to bound the amplitude of the
-            baseline exponential.
+        Extra keyword arguments to send to the minimizer
+    
     
     Returns
     -------
@@ -240,13 +189,10 @@ def fit_psp(data,
         ui.clear()
         ui.console.setStack()
         ui.plt1.plot(data.time_values, data.data)
+        ui.plt1.addLine(x=search_window[0], pen=0.3)
+        ui.plt1.addLine(x=search_window[1], pen=0.3)
 
     fit_kws = fit_kws or {}
-    
-    # extracting these for ease of use
-    t = data.time_values
-    y = data.data
-    dt = data.dt
     
     # set initial conditions depending on whether in voltage or current clamp
     # note that sign of these will automatically be set later on based on the 
@@ -266,22 +212,22 @@ def fit_psp(data,
 
     # Set up amplitude initial values and boundaries depending on whether *sign* are positive or negative
     if sign == '-':
-        amp_default = (-amp_init, -amp_max, 0)
+        amp = (-amp_init, -amp_max, 0)
     elif sign == '+':
-        amp_default = (amp_init, 0, amp_max)
+        amp = (amp_init, 0, amp_max)
     elif sign == 'any':
-        amp_default = (0, -amp_max, amp_max)
+        amp = (0, -amp_max, amp_max)
     else:
         raise ValueError('sign must be "+", "-", or "any"')
         
-    # initial condition, lower boundry, upper boundry    
+    # initial condition, lower boundary, upper boundary
     base_params = {
         'xoffset': xoffset,
-        'yoffset': yoffset or (0, -float('inf'), float('inf')),
-        'rise_time': rise_time or (rise_time_init, rise_time_init/rise_time_mult_factor, rise_time_init*rise_time_mult_factor),
-        'decay_tau': decay_tau or (decay_tau_init, decay_tau_init/10., decay_tau_init*10.),
-        'rise_power': rise_power or (2, 'fixed'),
-        'amp': amp or amp_default,
+        'yoffset': (0, -float('inf'), float('inf')),
+        'rise_time': (rise_time_init, rise_time_init/10., rise_time_init*10.),
+        'decay_tau': (decay_tau_init, decay_tau_init/10., decay_tau_init*10.),
+        'rise_power': (2, 'fixed'),
+        'amp': amp,
     }
     
     # specify fitting function and set up conditions
@@ -306,9 +252,6 @@ def fit_psp(data,
     
     fit_kws['weights'] = weight
 
-    if ui is not None:
-        ui.plt1.addLine(x=base_params['xoffset'][1], pen=0.3)
-        ui.plt1.addLine(x=base_params['xoffset'][2], pen=0.3)
 
     fit = psp.fit(y, x=t, params=base_params, fit_kws=fit_kws, method=method)
 
