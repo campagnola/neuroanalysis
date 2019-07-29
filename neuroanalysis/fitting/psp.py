@@ -193,7 +193,9 @@ def fit_psp(data, search_window, clamp_mode, sign='any', exp_baseline=True, para
         ui.plt1.addLine(x=search_window[0], pen=0.3)
         ui.plt1.addLine(x=search_window[1], pen=0.3)
 
-    fit_kws = fit_kws or {}
+    fit_kws = fit_kws or {
+        'maxfev': 15,
+    }
     
     # set initial conditions depending on whether in voltage or current clamp
     # note that sign of these will automatically be set later on based on the 
@@ -244,9 +246,26 @@ def fit_psp(data, search_window, clamp_mode, sign='any', exp_baseline=True, para
     #         raise Exception('the weight and array vectors are not the same length')     
     # fit_kws['weights'] = weight
 
-    # Decide how to search xoffset
-    n_xoffset_chunks = int((search_window[1] - search_window[0]) / 0.3e-3)
+    # Round 1: coarse fit
+
+    # Coarse search xoffset
+    n_xoffset_chunks = int((search_window[1] - search_window[0]) / 1e-3) + 1
     xoffset_chunks = np.linspace(search_window[0], search_window[1], n_xoffset_chunks)
+    xoffset = [{'xoffset': ((a+b)/2., a, b)} for a,b in zip(xoffset_chunks[:-1], xoffset_chunks[1:])]
+
+    # Find best coarse fit 
+    search = SearchFit(psp, [xoffset], params=base_params, x=data.time_values, data=data.data, fit_kws=fit_kws)
+    fit = search.best_result.best_values
+
+    if ui is not None:
+        br = search.best_result
+        ui.plt1.plot(data.time_values, br.best_fit, pen=(0, 255, 0, 100))
+
+    # Round 2: fine fit
+
+    # Fine search xoffset
+    n_xoffset_chunks = 8
+    xoffset_chunks = np.linspace(fit['xoffset']-1e-3, fit['xoffset']+1e-3, n_xoffset_chunks)
     xoffset = [{'xoffset': ((a+b)/2., a, b)} for a,b in zip(xoffset_chunks[:-1], xoffset_chunks[1:])]
 
     # Search rise time to avoid traps

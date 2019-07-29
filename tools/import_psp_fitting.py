@@ -87,8 +87,8 @@ def load_next():
     rec = pr['response']
     kwds = {
         'data': rec['primary'], 
+        'search_window': (spiketime, spiketime+8e-3),
         'clamp_mode': rec.clamp_mode,
-        'xoffset': (spiketime+1e-3, spiketime, spiketime+8e-3),
     }
     fit = fit_psp(ui=ui, **kwds)
     ui.show_result(fit)
