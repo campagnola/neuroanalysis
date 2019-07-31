@@ -13,7 +13,7 @@ import numpy as np
 from scipy.optimize import curve_fit
 from neuroanalysis.spike_detection import detect_evoked_spikes, SpikeDetectTestCase
 from neuroanalysis.ui.spike_detection import SpikeDetectUI
-from neuroanalysis.data import Trace, TraceList, PatchClampRecording
+from neuroanalysis.data import TSeries, TSeriesList, PatchClampRecording
 from multipatch_analysis.database import default_db as db
 from multipatch_analysis.data import Analyzer, PulseStimAnalyzer, MultiPatchProbe
 
@@ -77,7 +77,7 @@ def load_next():
     ui.show_result(spikes)
 
     # copy just the necessary parts of recording data for export to file
-    export_chunk = PatchClampRecording(channels={k:Trace(chunk[k].data, t0=chunk[k].t0, sample_rate=chunk[k].sample_rate) for k in chunk.channels})
+    export_chunk = PatchClampRecording(channels={k:TSeries(chunk[k].data, t0=chunk[k].t0, sample_rate=chunk[k].sample_rate) for k in chunk.channels})
     export_chunk.meta.update(chunk.meta)
 
     # construct test case    

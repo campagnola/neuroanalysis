@@ -163,7 +163,7 @@ def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, params=N
 
     Parameters
     ----------
-    data : neuroanalysis.data.Trace instance
+    data : neuroanalysis.data.TSeries instance
         Contains data on trace waveform.
     search_window : tuple
         start, stop range over which to search for PSP onset.

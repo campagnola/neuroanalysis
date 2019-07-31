@@ -5,16 +5,16 @@ from collections import OrderedDict
 import numpy as np
 import h5py
 
-from .data import Experiment, SyncRecording, PatchClampRecording, Trace
+from .data import Dataset, SyncRecording, PatchClampRecording, TSeries
 from .test_pulse import PatchClampTestPulse
 from . import stimuli
 
 
-class MiesNwb(Experiment):
+class MiesNwb(Dataset):
     """Class for accessing data from a MIES-generated NWB file.
     """
     def __init__(self, filename):
-        Experiment.__init__(self)
+        Dataset.__init__(self)
         self.filename = filename
         self._hdf = None
         self._sweeps = None
@@ -262,14 +262,14 @@ class MiesNwb(Experiment):
         return self._tp_entries
 
 
-class MiesTrace(Trace):
+class MiesTSeries(TSeries):
     def __init__(self, recording, chan):
         start = recording._meta['start_time']
         
         # Note: this is also available in meta()['Minimum Sampling interval'],
         # but that key is missing in some older NWB files.
         dt = recording.primary_hdf.attrs['IGORWaveScaling'][1,0] / 1000.
-        Trace.__init__(self, recording=recording, channel_id=chan, dt=dt, start_time=start)
+        TSeries.__init__(self, recording=recording, channel_id=chan, dt=dt, start_time=start)
     
     @property
     def data(self):
@@ -349,8 +349,8 @@ class MiesRecording(PatchClampRecording):
         datetime = MiesNwb.igorpro_date(nb['TimeStamp'])
         self.meta['start_time'] = datetime
 
-        self._channels['primary'] = MiesTrace(self, 'primary')
-        self._channels['command'] = MiesTrace(self, 'command')
+        self._channels['primary'] = MiesTSeries(self, 'primary')
+        self._channels['command'] = MiesTSeries(self, 'command')
 
     @property
     def stimulus(self):

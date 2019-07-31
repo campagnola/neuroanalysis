@@ -1,6 +1,6 @@
 from __future__ import division
 import numpy as np
-from .data import Trace
+from .data import TSeries
 
 
 def zero_crossing_events(data, min_length=3, min_peak=0.0, min_sum=0.0, noise_threshold=None):
@@ -16,7 +16,7 @@ def zero_crossing_events(data, min_length=3, min_peak=0.0, min_sum=0.0, noise_th
     Returns an array of events where each row is (start, length, sum, peak)
     """
     
-    if isinstance(data, Trace):
+    if isinstance(data, TSeries):
         xvals = data.time_values
         data1 = data.data
     else:
