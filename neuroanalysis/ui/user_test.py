@@ -56,9 +56,9 @@ class UserTestUi(object):
             time.sleep(0.03)
 
     def show_results(self, expected, current):
-        self.display1.show_result(expected)
-        self.display2.show_result(current)
         self.diff_widget.setData(expected, current)
+        self.display2.show_result(current)
+        self.display1.show_result(expected)
 
     def clear(self):
         self.display1.clear()

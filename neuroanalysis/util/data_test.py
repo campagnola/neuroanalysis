@@ -60,14 +60,14 @@ class DataTestCase(object):
     def audit_test(self, ui):
         ui.clear()
 
-        # display test data/thresholds and expected result in first panel
-        self.test_function(ui=ui.display1, **self.input_args)
-
-        # display test data/thresholds and current result in second panel
-        self._current_result = self.test_function(ui=ui.display2, **self.input_args)
-        ui.show_results(self.expected_result, self._current_result)
-
         try:
+            # display test data/thresholds and expected result in first panel
+            self.test_function(ui=ui.display1, **self.input_args)
+
+            # display test data/thresholds and current result in second panel
+            self._current_result = self.test_function(ui=ui.display2, **self.input_args)
+            ui.show_results(self.expected_result, self._current_result)
+
             self.check_result(self._current_result)
         except Exception as exc:
             traceback.print_exc()
