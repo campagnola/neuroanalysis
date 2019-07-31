@@ -77,17 +77,17 @@ class Container(object):
         return path[::-1]
 
 
-class Experiment(Container):
-    """A generic container for RecordingSequence and SyncRecording instances that
+class Dataset(Container):
+    """A generic container for RecordingSequence, SyncRecording, Recording, and Trace instances that
     were acquired together.
     
     The boundaries between one experiment and the next are sometimes ambiguous, but
     in general we group multiple recordings into an experiment if they are likely to
     be analyzed together. Likewise, recordings that have no causal relationship
-    to each other probably belong in different Experiment containers. For example,
+    to each other probably belong in different Dataset containers. For example,
     a series of recordings made on the same cell almost certainly belong in the same
-    Experiment, whereas recordings made from different pieces of tissue probably
-    belong in different Experiments.
+    Dataset, whereas recordings made from different pieces of tissue probably
+    belong in different Datasets.
     """
     def __init__(self, data=None, meta=None):
         Container.__init__(self)

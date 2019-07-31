@@ -5,16 +5,16 @@ from collections import OrderedDict
 import numpy as np
 import h5py
 
-from .data import Experiment, SyncRecording, PatchClampRecording, Trace
+from .data import Dataset, SyncRecording, PatchClampRecording, Trace
 from .test_pulse import PatchClampTestPulse
 from . import stimuli
 
 
-class MiesNwb(Experiment):
+class MiesNwb(Dataset):
     """Class for accessing data from a MIES-generated NWB file.
     """
     def __init__(self, filename):
-        Experiment.__init__(self)
+        Dataset.__init__(self)
         self.filename = filename
         self._hdf = None
         self._sweeps = None
