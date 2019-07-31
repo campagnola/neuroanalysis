@@ -76,16 +76,15 @@ class Psp(FitModel):
 class StackedPsp(FitModel):
     """A PSP on top of an exponential decay.
     
-    Parameters are the same as for Psp, with the addition of *exp_amp*, which
-    is the amplitude of the underlying exponential decay at the onset of the
-    psp.
+    Parameters are the same as for Psp, with the addition of *exp_amp* and *exp_tau*,
+    which describe the baseline exponential decay.
     """
     def __init__(self):
         FitModel.__init__(self, self.stacked_psp_func, independent_vars=['x'])
     
     @staticmethod
-    def stacked_psp_func(x, xoffset, yoffset, rise_time, decay_tau, amp, rise_power, exp_amp):
-        exp = exp_amp * np.exp(-(x-xoffset) / decay_tau)
+    def stacked_psp_func(x, xoffset, yoffset, rise_time, decay_tau, amp, rise_power, exp_amp, exp_tau):
+        exp = exp_amp * np.exp(-(x-xoffset) / exp_tau)
         return exp + Psp.psp_func(x, xoffset, yoffset, rise_time, decay_tau, amp, rise_power)
 
 
@@ -204,11 +203,13 @@ def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, params=N
         amp_max = 100e-3
         rise_time_init = 5e-3
         decay_tau_init = 50e-3
+        exp_tau_init = 20e-3
     elif clamp_mode == 'vc':
         amp_init = 20e-12
         amp_max = 500e-12
         rise_time_init = 1e-3
         decay_tau_init = 4e-3
+        exp_tau_init = 4e-3
     else:
         raise ValueError('clamp_mode must be "ic" or "vc"')
 
@@ -234,9 +235,12 @@ def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, params=N
     # specify fitting function and set up conditions
     psp = StackedPsp()
     if exp_baseline:
-        base_params.update({'exp_amp': (0, -float('inf'), float('inf'))})  
+        base_params.update({
+            'exp_amp': (0, -float('inf'), float('inf')),
+            'exp_tau': (exp_tau_init, exp_tau_init / 10., exp_tau_init * 20.)
+        })
     else:
-        base_params.update({'exp_amp': 0})
+        base_params.update({'exp_amp': (0, 'fixed'), 'exp_tau': (1, 'fixed')})
     
     # if weight is None: #use default weighting
     #     weight = np.ones(len(y))
@@ -263,8 +267,9 @@ def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, params=N
     # Round 2: fine fit
 
     # Fine search xoffset
-    n_xoffset_chunks = 4
-    xoffset_chunks = np.linspace(fit['xoffset']-1e-3, fit['xoffset']+1e-3, n_xoffset_chunks)
+    fine_search_window = (max(search_window[0], fit['xoffset']-1e-3), min(search_window[1], fit['xoffset']+1e-3))
+    n_xoffset_chunks = int((fine_search_window[1] - fine_search_window[0]) / 0.2e-3) + 1
+    xoffset_chunks = np.linspace(fine_search_window[0], fine_search_window[1], n_xoffset_chunks)
     xoffset = [{'xoffset': ((a+b)/2., a, b)} for a,b in zip(xoffset_chunks[:-1], xoffset_chunks[1:])]
 
     # Search amp / rise time / decay tau to avoid traps
