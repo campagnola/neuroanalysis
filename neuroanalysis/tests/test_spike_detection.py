@@ -2,7 +2,7 @@ import os, glob, pickle
 import pytest
 import numpy as np
 import neuroanalysis
-from neuroanalysis.data import Recording, Trace
+from neuroanalysis.data import Recording, TSeries
 from neuroanalysis.neuronsim.model_cell import ModelCell
 from neuroanalysis.units import pA, mV, MOhm, pF, us, ms
 from neuroanalysis.spike_detection import SpikeDetectTestCase, detect_evoked_spikes
@@ -66,7 +66,7 @@ def create_test_pulse(start=5*ms, pdur=10*ms, pamp=-10*pA, mode='ic', dt=10*us, 
     pulse[pstart:pstop] = pamp
     
     # simulate response
-    result = model_cell.test(Trace(pulse, dt), mode)
+    result = model_cell.test(TSeries(pulse, dt), mode)
 
     return result
 

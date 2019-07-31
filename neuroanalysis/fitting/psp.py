@@ -238,7 +238,7 @@ def fit_psp(response,
 
     Parameters
     ----------
-    response : neuroanalysis.data.Trace class
+    response : neuroanalysis.data.TSeries class
         Contains data on trace waveform.
     clamp_mode : string
         either 'ic' for current clamp or 'vc' for voltage clamp

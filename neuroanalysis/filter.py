@@ -3,7 +3,7 @@ import scipy.stats, scipy.signal
 
 
 def bessel_filter(trace, cutoff, order=1, btype='low', bidir=True):
-    """Return a Bessel-filtered copy of a Trace.
+    """Return a Bessel-filtered copy of a TSeries.
     """
     b,a = scipy.signal.bessel(order, cutoff * trace.dt, btype=btype) 
     filtered = apply_filter(trace.data, b, a, bidir=bidir)
@@ -13,7 +13,7 @@ def bessel_filter(trace, cutoff, order=1, btype='low', bidir=True):
 
 
 def butterworth_filter(trace, w_pass, w_stop=None, g_pass=2.0, g_stop=20.0, order=1, btype='low', bidir=True):
-    """Return a Butterworth-filtered copy of a Trace.
+    """Return a Butterworth-filtered copy of a TSeries.
     """
     if w_stop is None:
         w_stop = w_pass * 2.0
@@ -45,7 +45,7 @@ def apply_filter(data, b, a, padding=100, bidir=True):
     return filtered
 
 def savgol_filter(trace, window_duration, **kwds):
-    """Return a Savitsky-Golay-filtered copy of a Trace.
+    """Return a Savitsky-Golay-filtered copy of a TSeries.
     """
     from scipy.signal import savgol_filter  # only recently available
     wlen = int(window_duration / trace.dt)
@@ -58,7 +58,7 @@ def remove_artifacts(trace, edges, window):
 
     Parameters
     ----------
-    trace : Trace instance
+    trace : TSeries instance
         Data to be filtered.
     edges : list of (start, stop) tuples
         Specifies the indices of regions in the trace to remove.

@@ -6,7 +6,7 @@ from scipy.ndimage import gaussian_filter
 from scipy.optimize import curve_fit
 from scipy.stats import scoreatpercentile
 
-from .data import Trace, PatchClampRecording
+from .data import TSeries, PatchClampRecording
 from .filter import bessel_filter
 from .baseline import mode_filter, adaptive_detrend
 from .event_detection import threshold_events
@@ -175,14 +175,14 @@ def detect_vc_evoked_spikes(trace, pulse_edges, ui=None):
 
     Parameters
     ==========
-    trace : Trace instance
+    trace : TSeries instance
         The recorded patch clamp data. The recording should be made with a brief pulse intended
         to evoke a single spike with short latency.
     pulse_edges : (float, float)
         The start and end times of the stimulation pulse, relative to the timebase in *trace*.
     """
-    if not isinstance(trace, Trace):
-        raise TypeError("data must be Trace instance.")
+    if not isinstance(trace, TSeries):
+        raise TypeError("data must be TSeries instance.")
 
     if ui is not None:
         ui.clear()
