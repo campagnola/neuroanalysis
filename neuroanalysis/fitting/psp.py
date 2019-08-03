@@ -252,8 +252,8 @@ def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, params=N
     # Round 1: coarse fit
 
     # Coarse search xoffset
-    n_xoffset_chunks = int((search_window[1] - search_window[0]) / 1e-3) + 1
-    xoffset_chunks = np.linspace(search_window[0], search_window[1], n_xoffset_chunks)
+    n_xoffset_chunks = max(1, int((search_window[1] - search_window[0]) / 1e-3))
+    xoffset_chunks = np.linspace(search_window[0], search_window[1], n_xoffset_chunks+1)
     xoffset = [{'xoffset': ((a+b)/2., a, b)} for a,b in zip(xoffset_chunks[:-1], xoffset_chunks[1:])]
 
     # Find best coarse fit 

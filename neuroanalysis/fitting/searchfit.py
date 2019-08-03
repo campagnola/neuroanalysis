@@ -66,6 +66,7 @@ class SearchFit(object):
         """Generator that yields results from fitting each point in the parameter space.
         """
         self.results = []
+        assert len(self.all_inds) > 0, "No parameters to search"
         for i,inds in enumerate(self.all_inds):
             params = {}
             for j,ind in enumerate(inds):
