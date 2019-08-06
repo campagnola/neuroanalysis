@@ -2,7 +2,7 @@
 from __future__ import division, print_function
 from collections import OrderedDict
 import numpy as np
-from .util.weakref import WeakRef
+from .util.custom_weakref import WeakRef
 from .data import TSeries
 
 
