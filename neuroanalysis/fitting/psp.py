@@ -191,9 +191,20 @@ def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, params=N
         ui.plt1.addLine(x=search_window[0], pen=0.3)
         ui.plt1.addLine(x=search_window[1], pen=0.3)
 
-    fit_kws = fit_kws or {
-        'maxfev': 20,
-    }
+    # good fit, slow
+    method = 'Nelder-Mead'
+    fit_kws.setdefault('options', {'maxiter': 300, 'disp': True})
+    
+    # good fit
+    # method = 'Powell'
+    # fit_kws.setdefault('options', {'maxfev': 200, 'disp': True})
+
+    # bad fit
+    # method = 'CG'
+    # fit_kws.setdefault('options', {'maxiter': 100, 'disp': True})
+
+    # method = 'L-BFGS-B'
+    # fit_kws.setdefault('options', {'maxiter': 100, 'disp': True})
     
     # set initial conditions depending on whether in voltage or current clamp
     # note that sign of these will automatically be set later on based on the 
@@ -257,7 +268,7 @@ def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, params=N
     xoffset = [{'xoffset': ((a+b)/2., a, b)} for a,b in zip(xoffset_chunks[:-1], xoffset_chunks[1:])]
 
     # Find best coarse fit 
-    search = SearchFit(psp, [xoffset], params=base_params, x=data.time_values, data=data.data, fit_kws=fit_kws)
+    search = SearchFit(psp, [xoffset], params=base_params, x=data.time_values, data=data.data, fit_kws=fit_kws, method=method)
     fit = search.best_result.best_values
 
     if ui is not None:
@@ -290,7 +301,7 @@ def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, params=N
     ]
 
     # Find best fit 
-    search = SearchFit(psp, search_params, params=base_params, x=data.time_values, data=data.data, fit_kws=fit_kws)
+    search = SearchFit(psp, search_params, params=base_params, x=data.time_values, data=data.data, fit_kws=fit_kws, method=method)
     fit = search.best_result
 
     # nrmse = fit.nrmse()
