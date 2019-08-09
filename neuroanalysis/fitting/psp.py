@@ -7,6 +7,7 @@ from ..data import Trace
 from ..util.data_test import DataTestCase
 from .fitmodel import FitModel
 from .searchfit import SearchFit
+import warnings
 
 
 class Psp(FitModel):
@@ -153,7 +154,7 @@ class Psp2(FitModel):
         return out
 
 
-def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, params=None, fit_kws=None, ui=None):
+def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, baseline_like_psp=False, params=None, fit_kws=None, ui=None):
     """Fit a Trace instance to a StackedPsp model.
     
     This function is a higher-level interface to StackedPsp.fit:    
@@ -174,6 +175,11 @@ def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, params=N
     exp_baseline : bool
         If True, then the pre-response baseline is fit to an exponential decay. 
         This is useful when the PSP follows close after another PSP or action potential.
+    baseline_like_psp : bool
+        If True, then the baseline exponential tau and psp decay tau are forced to be equal,
+        and their amplitudes are forced to have the same sign.
+        This is useful in situations where the baseline has an exponential decay caused by a preceding
+        PSP of similar shape, such as when fitting one PSP in a train.
     params : dict
         Override parameters to send to the fitting function (see StackedPsp.fit)
     fit_kws : dict
@@ -184,16 +190,27 @@ def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, params=N
     fit : lmfit.model.ModelResult
         Best fit
     """           
+    import pyqtgraph as pg
+    prof = pg.debug.Profiler(disabled=False, delayed=False)
+    
     if ui is not None:
         ui.clear()
         ui.console.setStack()
         ui.plt1.plot(data.time_values, data.data)
         ui.plt1.addLine(x=search_window[0], pen=0.3)
         ui.plt1.addLine(x=search_window[1], pen=0.3)
+        prof('plot')
 
     # good fit, slow
     method = 'Nelder-Mead'
-    fit_kws.setdefault('options', {'maxiter': 300, 'disp': True})
+    
+    if fit_kws is None:
+        fit_kws = {}
+    fit_kws.setdefault('options', {
+        'maxiter': 300, 
+        
+        # 'disp': True,
+    })
     
     # good fit
     # method = 'Powell'
@@ -214,7 +231,7 @@ def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, params=N
         amp_max = 100e-3
         rise_time_init = 5e-3
         decay_tau_init = 50e-3
-        exp_tau_init = 20e-3
+        exp_tau_init = 50e-3
     elif clamp_mode == 'vc':
         amp_init = 20e-12
         amp_max = 500e-12
@@ -246,10 +263,17 @@ def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, params=N
     # specify fitting function and set up conditions
     psp = StackedPsp()
     if exp_baseline:
-        base_params.update({
-            'exp_amp': (0, -float('inf'), float('inf')),
-            'exp_tau': (exp_tau_init, exp_tau_init / 10., exp_tau_init * 20.)
-        })
+        if baseline_like_psp:
+            base_params.update({
+                'exp_amp': "amp * exp_psp_amp_ratio",
+                'exp_psp_amp_ratio': (0.01, 0, float('inf')),
+                'exp_tau': 'decay_tau',
+            })
+        else:
+            base_params.update({
+                'exp_amp': (0, -float('inf'), float('inf')),
+                'exp_tau': (exp_tau_init, exp_tau_init / 10., exp_tau_init * 20.)
+            })
     else:
         base_params.update({'exp_amp': (0, 'fixed'), 'exp_tau': (1, 'fixed')})
     
@@ -266,10 +290,15 @@ def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, params=N
     n_xoffset_chunks = max(1, int((search_window[1] - search_window[0]) / 1e-3))
     xoffset_chunks = np.linspace(search_window[0], search_window[1], n_xoffset_chunks+1)
     xoffset = [{'xoffset': ((a+b)/2., a, b)} for a,b in zip(xoffset_chunks[:-1], xoffset_chunks[1:])]
+    
+    prof('prep for coarse fit')
 
     # Find best coarse fit 
     search = SearchFit(psp, [xoffset], params=base_params, x=data.time_values, data=data.data, fit_kws=fit_kws, method=method)
+    for i,result in enumerate(search.iter_fit()):
+        prof('  coarse fit iteration %d/%d: %s %s' % (i, len(search), result['param_index'], result['params']))
     fit = search.best_result.best_values
+    prof("coarse fit done")
 
     if ui is not None:
         br = search.best_result
@@ -279,8 +308,8 @@ def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, params=N
 
     # Fine search xoffset
     fine_search_window = (max(search_window[0], fit['xoffset']-1e-3), min(search_window[1], fit['xoffset']+1e-3))
-    n_xoffset_chunks = int((fine_search_window[1] - fine_search_window[0]) / 0.2e-3) + 1
-    xoffset_chunks = np.linspace(fine_search_window[0], fine_search_window[1], n_xoffset_chunks)
+    n_xoffset_chunks = max(1, int((fine_search_window[1] - fine_search_window[0]) / .2e-3))
+    xoffset_chunks = np.linspace(fine_search_window[0], fine_search_window[1], n_xoffset_chunks + 1)
     xoffset = [{'xoffset': ((a+b)/2., a, b)} for a,b in zip(xoffset_chunks[:-1], xoffset_chunks[1:])]
 
     # Search amp / rise time / decay tau to avoid traps
@@ -290,19 +319,25 @@ def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, params=N
     decay_tau_inits = base_params['decay_tau'][0] * 2.0**np.arange(-1,2)
     decay_tau = [{'decay_tau': (x,) + base_params['decay_tau'][1:]} for x in decay_tau_inits]
     
-    # amp_init = base_params['amp'][0]
-    # amp = [{'amp': (x,) + base_params['amp'][1:]} for x in [amp_init/0.5, amp_init*4.0]]
-    
     search_params = [
         rise_time, 
         decay_tau, 
-        # amp, 
         xoffset,
     ]
 
+    # if no sign was specified, search from both sides    
+    if sign == 0:
+        amp = [{'amp': (amp_init, -amp_max, amp_max)}, {'amp': (-amp_init, -amp_max, amp_max)}]
+        search_params.append(amp)
+
+    prof("prepare for fine fit")
+
     # Find best fit 
     search = SearchFit(psp, search_params, params=base_params, x=data.time_values, data=data.data, fit_kws=fit_kws, method=method)
+    for i,result in enumerate(search.iter_fit()):
+        prof('  fine fit iteration %d/%d: %s %s' % (i, len(search), result['param_index'], result['params']))
     fit = search.best_result
+    prof('fine fit done')
 
     # nrmse = fit.nrmse()
     if 'baseline_std' in data.meta:
