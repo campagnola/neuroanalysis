@@ -33,6 +33,8 @@ class SpikeDetectUI(object):
 
     def show_result(self, spikes):
         for plt in [self.plt1, self.plt2, self.plt3]:
+            if spikes is None:
+                continue
             for spike in spikes:
                 if spike.get('onset_time') is not None:
                     plt.addLine(x=spike['onset_time'])
