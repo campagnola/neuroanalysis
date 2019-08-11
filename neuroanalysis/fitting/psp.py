@@ -201,16 +201,20 @@ def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, baseline
         ui.plt1.addLine(x=search_window[1], pen=0.3)
         prof('plot')
 
-    # good fit, slow
-    method = 'Nelder-Mead'
-    
     if fit_kws is None:
         fit_kws = {}
-    fit_kws.setdefault('options', {
-        'maxiter': 300, 
+
+    method = 'leastsq'
+    fit_kws.setdefault('maxfev', 40)
+
+    # good fit, slow
+    # method = 'Nelder-Mead'
+    
+    # fit_kws.setdefault('options', {
+    #     'maxiter': 300, 
         
-        # 'disp': True,
-    })
+    #     # 'disp': True,
+    # })
     
     # good fit
     # method = 'Powell'
@@ -296,9 +300,10 @@ def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, baseline
     # Find best coarse fit 
     search = SearchFit(psp, [xoffset], params=base_params, x=data.time_values, data=data.data, fit_kws=fit_kws, method=method)
     for i,result in enumerate(search.iter_fit()):
-        prof('  coarse fit iteration %d/%d: %s %s' % (i, len(search), result['param_index'], result['params']))
+        pass
+        # prof('  coarse fit iteration %d/%d: %s %s' % (i, len(search), result['param_index'], result['params']))
     fit = search.best_result.best_values
-    prof("coarse fit done")
+    prof("coarse fit done (%d iter)" % len(search))
 
     if ui is not None:
         br = search.best_result
@@ -335,9 +340,10 @@ def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, baseline
     # Find best fit 
     search = SearchFit(psp, search_params, params=base_params, x=data.time_values, data=data.data, fit_kws=fit_kws, method=method)
     for i,result in enumerate(search.iter_fit()):
-        prof('  fine fit iteration %d/%d: %s %s' % (i, len(search), result['param_index'], result['params']))
+        pass
+        # prof('  fine fit iteration %d/%d: %s %s' % (i, len(search), result['param_index'], result['params']))
     fit = search.best_result
-    prof('fine fit done')
+    prof('fine fit done (%d iter)' % len(search))
 
     # nrmse = fit.nrmse()
     if 'baseline_std' in data.meta:
