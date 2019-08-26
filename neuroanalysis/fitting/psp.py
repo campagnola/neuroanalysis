@@ -1,13 +1,12 @@
 from __future__ import print_function, division
 
-import sys, json
+import sys, json, warnings
 import numpy as np
 import scipy.optimize
 from ..data import Trace
 from ..util.data_test import DataTestCase
 from .fitmodel import FitModel
 from .searchfit import SearchFit
-import warnings
 
 
 class Psp(FitModel):
@@ -85,8 +84,10 @@ class StackedPsp(FitModel):
     
     @staticmethod
     def stacked_psp_func(x, xoffset, yoffset, rise_time, decay_tau, amp, rise_power, exp_amp, exp_tau):
-        exp = exp_amp * np.exp(-(x-xoffset) / exp_tau)
-        return exp + Psp.psp_func(x, xoffset, yoffset, rise_time, decay_tau, amp, rise_power)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")    
+            exp = exp_amp * np.exp(-(x-xoffset) / exp_tau)
+            return exp + Psp.psp_func(x, xoffset, yoffset, rise_time, decay_tau, amp, rise_power)
 
 
 class PspTrain(FitModel):
@@ -154,7 +155,7 @@ class Psp2(FitModel):
         return out
 
 
-def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, baseline_like_psp=False, params=None, fit_kws=None, ui=None):
+def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, baseline_like_psp=False, refine=True, init_params=None, fit_kws=None, ui=None):
     """Fit a Trace instance to a StackedPsp model.
     
     This function is a higher-level interface to StackedPsp.fit:    
@@ -180,8 +181,10 @@ def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, baseline
         and their amplitudes are forced to have the same sign.
         This is useful in situations where the baseline has an exponential decay caused by a preceding
         PSP of similar shape, such as when fitting one PSP in a train.
-    params : dict
-        Override parameters to send to the fitting function (see StackedPsp.fit)
+    refine : bool
+        If True, then fit in two stages, with the second stage searching over rise/decay.
+    init_params : dict
+        Initial parameter guesses
     fit_kws : dict
         Extra keyword arguments to send to the minimizer
     
@@ -191,7 +194,7 @@ def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, baseline
         Best fit
     """           
     import pyqtgraph as pg
-    prof = pg.debug.Profiler(disabled=False, delayed=False)
+    prof = pg.debug.Profiler(disabled=True, delayed=False)
     
     if ui is not None:
         ui.clear()
@@ -203,9 +206,11 @@ def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, baseline
 
     if fit_kws is None:
         fit_kws = {}
+    if init_params is None:
+        init_params = {}
 
     method = 'leastsq'
-    fit_kws.setdefault('maxfev', 40)
+    fit_kws.setdefault('maxfev', 500)
 
     # good fit, slow
     # method = 'Nelder-Mead'
@@ -226,22 +231,27 @@ def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, baseline
 
     # method = 'L-BFGS-B'
     # fit_kws.setdefault('options', {'maxiter': 100, 'disp': True})
+
+    # take some measurements to help constrain fit
+    data_min = data.data.min()
+    data_max = data.data.max()
+    data_mean = data.mean()
     
     # set initial conditions depending on whether in voltage or current clamp
     # note that sign of these will automatically be set later on based on the 
     # the *sign* input
     if clamp_mode == 'ic':
-        amp_init = .2e-3
-        amp_max = 100e-3
-        rise_time_init = 5e-3
-        decay_tau_init = 50e-3
-        exp_tau_init = 50e-3
+        amp_init = init_params.get('amp', .2e-3)
+        amp_max = min(100e-3, 3 * (data_max-data_min))
+        rise_time_init = init_params.get('rise_time', 5e-3)
+        decay_tau_init = init_params.get('decay_tau', 50e-3)
+        exp_tau_init = init_params.get('exp_tau', 50e-3)
     elif clamp_mode == 'vc':
-        amp_init = 20e-12
-        amp_max = 500e-12
-        rise_time_init = 1e-3
-        decay_tau_init = 4e-3
-        exp_tau_init = 4e-3
+        amp_init = init_params.get('amp', 20e-12)
+        amp_max = min(500e-12, 3 * (data_max-data_min))
+        rise_time_init = init_params.get('rise_time', 1e-3)
+        decay_tau_init = init_params.get('decay_tau', 4e-3)
+        exp_tau_init = init_params.get('exp_tau', 4e-3)
     else:
         raise ValueError('clamp_mode must be "ic" or "vc"')
 
@@ -257,7 +267,7 @@ def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, baseline
         
     # initial condition, lower boundary, upper boundary
     base_params = {
-        'yoffset': (0, -float('inf'), float('inf')),
+        'yoffset': (init_params.get('yoffset', data_mean), -float('inf'), float('inf')),
         'rise_time': (rise_time_init, rise_time_init/10., rise_time_init*10.),
         'decay_tau': (decay_tau_init, decay_tau_init/10., decay_tau_init*10.),
         'rise_power': (2, 'fixed'),
@@ -268,14 +278,15 @@ def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, baseline
     psp = StackedPsp()
     if exp_baseline:
         if baseline_like_psp:
-            base_params.update({
-                'exp_amp': "amp * exp_psp_amp_ratio",
-                'exp_psp_amp_ratio': (0.01, 0, float('inf')),
-                'exp_tau': 'decay_tau',
-            })
+            if sign == -1:
+                base_params.update({'exp_amp': (0.01 * amp_init, -float('inf'), 0), 'exp_tau': 'decay_tau'})
+            elif sign == 1:
+                base_params.update({'exp_amp': (0.01 * amp_init, 0, float('inf')), 'exp_tau': 'decay_tau'})
+            else:
+                base_params.update({'exp_amp': (0.01 * amp_init, -float('inf'), float('inf')), 'exp_tau': 'decay_tau'})
         else:
             base_params.update({
-                'exp_amp': (0, -float('inf'), float('inf')),
+                'exp_amp': (0.01 * amp_init, -float('inf'), float('inf')),
                 'exp_tau': (exp_tau_init, exp_tau_init / 10., exp_tau_init * 20.)
             })
     else:
@@ -309,8 +320,11 @@ def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, baseline
         br = search.best_result
         ui.plt1.plot(data.time_values, br.best_fit, pen=(0, 255, 0, 100))
 
-    # Round 2: fine fit
+    if not refine:
+        return search.best_result
 
+    # Round 2: fine fit
+        
     # Fine search xoffset
     fine_search_window = (max(search_window[0], fit['xoffset']-1e-3), min(search_window[1], fit['xoffset']+1e-3))
     n_xoffset_chunks = max(1, int((fine_search_window[1] - fine_search_window[0]) / .2e-3))
@@ -344,11 +358,6 @@ def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, baseline
         # prof('  fine fit iteration %d/%d: %s %s' % (i, len(search), result['param_index'], result['params']))
     fit = search.best_result
     prof('fine fit done (%d iter)' % len(search))
-
-    # nrmse = fit.nrmse()
-    if 'baseline_std' in data.meta:
-        fit.snr = abs(fit.best_values['amp']) / data.meta['baseline_std']
-        fit.err = fit.nrmse() / data.meta['baseline_std']
 
     return fit
 
