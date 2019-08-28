@@ -113,16 +113,16 @@ def threshold_events(trace, threshold, adjust_times=True, baseline=0.0, omit_end
         diff = mask[1:] - mask[:-1]
         on_inds = list(np.argwhere(diff==1)[:,0] + 1)
         off_inds = list(np.argwhere(diff==-1)[:,0] + 1)
-        if len(on_inds) == 0 or len(off_inds) == 0:
+        if len(on_inds) == 0 and len(off_inds) == 0:
             continue
-        if off_inds[0] < on_inds[0]:
+        if len(on_inds) == 0 or off_inds[0] < on_inds[0]:
             if omit_ends:
                 off_inds = off_inds[1:]
                 if len(off_inds) == 0:
                     continue
             else:
                 on_inds.insert(0, 0)
-        if off_inds[-1] < on_inds[-1]:
+        if len(off_inds) == 0 or off_inds[-1] < on_inds[-1]:
             if omit_ends:
                 on_inds = on_inds[:-1]
             else:

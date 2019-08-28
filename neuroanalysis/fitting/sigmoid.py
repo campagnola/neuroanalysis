@@ -13,6 +13,6 @@ class Sigmoid(FitModel):
         FitModel.__init__(self, self.sigmoid, independent_vars=['x'])
 
     @staticmethod
-    def sigmoid(v, xoffset, yoffset, slope, amp):
+    def sigmoid(x, xoffset, yoffset, slope, amp):
         return amp / (1.0 + np.exp(-slope * (x-xoffset))) + yoffset
 
