@@ -246,12 +246,14 @@ def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, baseline
         rise_time_init = init_params.get('rise_time', 5e-3)
         decay_tau_init = init_params.get('decay_tau', 50e-3)
         exp_tau_init = init_params.get('exp_tau', 50e-3)
+        exp_amp_max = 100e-3
     elif clamp_mode == 'vc':
         amp_init = init_params.get('amp', 20e-12)
         amp_max = min(500e-12, 3 * (data_max-data_min))
         rise_time_init = init_params.get('rise_time', 1e-3)
         decay_tau_init = init_params.get('decay_tau', 4e-3)
         exp_tau_init = init_params.get('exp_tau', 4e-3)
+        exp_amp_max = 10e-9
     else:
         raise ValueError('clamp_mode must be "ic" or "vc"')
 
@@ -279,14 +281,14 @@ def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, baseline
     if exp_baseline:
         if baseline_like_psp:
             if sign == -1:
-                base_params.update({'exp_amp': (0.01 * amp_init, -float('inf'), 0), 'exp_tau': 'decay_tau'})
+                base_params.update({'exp_amp': (0.01 * amp_init, -exp_amp_max, 0), 'exp_tau': 'decay_tau'})
             elif sign == 1:
-                base_params.update({'exp_amp': (0.01 * amp_init, 0, float('inf')), 'exp_tau': 'decay_tau'})
+                base_params.update({'exp_amp': (0.01 * amp_init, 0, exp_amp_max), 'exp_tau': 'decay_tau'})
             else:
-                base_params.update({'exp_amp': (0.01 * amp_init, -float('inf'), float('inf')), 'exp_tau': 'decay_tau'})
+                base_params.update({'exp_amp': (0.01 * amp_init, -exp_amp_max, exp_amp_max), 'exp_tau': 'decay_tau'})
         else:
             base_params.update({
-                'exp_amp': (0.01 * amp_init, -float('inf'), float('inf')),
+                'exp_amp': (0.01 * amp_init, -exp_amp_max, exp_amp_max),
                 'exp_tau': (exp_tau_init, exp_tau_init / 10., exp_tau_init * 20.)
             })
     else:
@@ -337,12 +339,17 @@ def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, baseline
 
     decay_tau_inits = base_params['decay_tau'][0] * 2.0**np.arange(-1,2)
     decay_tau = [{'decay_tau': (x,) + base_params['decay_tau'][1:]} for x in decay_tau_inits]
-    
+
     search_params = [
         rise_time, 
         decay_tau, 
         xoffset,
     ]
+    
+    # if 'fixed' not in base_params['exp_amp']:
+    #     exp_amp_inits = [0, amp_init*0.01, amp_init]
+    #     exp_amp = [{'exp_amp': (x,) + base_params['exp_amp'][1:]} for x in exp_amp_inits]
+    #     search_params.append(exp_amp)
 
     # if no sign was specified, search from both sides    
     if sign == 0:
