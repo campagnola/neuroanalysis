@@ -269,7 +269,7 @@ def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, baseline
         
     # initial condition, lower boundary, upper boundary
     base_params = {
-        'yoffset': (init_params.get('yoffset', data_mean), -float('inf'), float('inf')),
+        'yoffset': (init_params.get('yoffset', data_mean), -1.0, 1.0),
         'rise_time': (rise_time_init, rise_time_init/10., rise_time_init*10.),
         'decay_tau': (decay_tau_init, decay_tau_init/10., decay_tau_init*10.),
         'rise_power': (2, 'fixed'),
@@ -280,19 +280,18 @@ def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, baseline
     psp = StackedPsp()
     if exp_baseline:
         if baseline_like_psp:
-            if sign == -1:
-                base_params.update({'exp_amp': (0.01 * amp_init, -exp_amp_max, 0), 'exp_tau': 'decay_tau'})
-            elif sign == 1:
-                base_params.update({'exp_amp': (0.01 * amp_init, 0, exp_amp_max), 'exp_tau': 'decay_tau'})
-            else:
-                base_params.update({'exp_amp': (0.01 * amp_init, -exp_amp_max, exp_amp_max), 'exp_tau': 'decay_tau'})
+            exp_min = 0 if sign == 1 else -exp_amp_max 
+            exp_max = 0 if sign == -1 else exp_amp_max 
+            base_params['exp_tau'] = 'decay_tau'
         else:
-            base_params.update({
-                'exp_amp': (0.01 * amp_init, -exp_amp_max, exp_amp_max),
-                'exp_tau': (exp_tau_init, exp_tau_init / 10., exp_tau_init * 20.)
-            })
+            exp_min = -exp_amp_max 
+            exp_max = exp_amp_max 
+            base_params['exp_tau'] = (exp_tau_init, exp_tau_init / 10., exp_tau_init * 20.)
+        base_params['exp_amp'] = (0.01 * sign * amp_init, exp_min, exp_max)
     else:
         base_params.update({'exp_amp': (0, 'fixed'), 'exp_tau': (1, 'fixed')})
+    
+    # print(clamp_mode, base_params, sign, amp_init)
     
     # if weight is None: #use default weighting
     #     weight = np.ones(len(y))
