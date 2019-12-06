@@ -301,8 +301,9 @@ class MiesTSeries(TSeries):
 
             if np.isnan(self._data[-1]):
                 # recording was interrupted; remove NaNs from the end of the array
-                last_sample = np.argwhere(np.isfinite(self._data)).max()
-                self._data = self._data[:last_sample+1]
+                
+                first_nan = np.searchsorted(self._data, np.nan)
+                self._data = self._data[:first_nan]
 
         return self._data
     
