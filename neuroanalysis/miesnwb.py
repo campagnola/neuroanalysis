@@ -299,12 +299,6 @@ class MiesTSeries(TSeries):
                     raise exc
                 self._data = (np.array(rec.command_hdf) * scale) + offset
 
-            if np.isnan(self._data[-1]):
-                # recording was interrupted; remove NaNs from the end of the array
-                
-                first_nan = np.searchsorted(self._data, np.nan)
-                self._data = self._data[:first_nan]
-
         return self._data
     
     @property
@@ -518,6 +512,12 @@ class MiesRecording(PatchClampRecording):
         state['_hdf_group'] = None
         return state
 
+    @property
+    def aborted(self):
+        """Bool indicating whether this recording was aborted early.
+        """
+        return np.isnan(self.primary_hdf[-1])
+
 
 class MiesTestPulse(PatchClampTestPulse):
     def __init__(self, entry, rec):
@@ -604,6 +604,7 @@ class MiesSyncRecording(SyncRecording):
         self._chan_meta = None
         self._traces = None
         self._notebook_entry = None
+        self._aborted = None
 
         # get list of all A/D channels in this sweep
         self._channel_keys = self._nwb._timeseries.get(sweep_id, {})
@@ -614,7 +615,6 @@ class MiesSyncRecording(SyncRecording):
         for ch in self._ad_channels:
             # there is a very rare/specific acquisition bug that we want to be able to ignore here:
             try:
-                hdf_group_name = self._channel_keys[ch]['hdf_group_name']
                 rec = self.create_recording(sweep_id, ch)
             except Exception as exc:
                 if hasattr(exc, '_ignorable_bug_flag'):
@@ -640,6 +640,19 @@ class MiesSyncRecording(SyncRecording):
     @property
     def parent(self):
         return self._nwb
+
+    @property
+    def aborted(self):
+        """Bool indicating whether this sync recording was aborted early.
+        """
+        if self._aborted is None:
+            self._aborted = False
+            for dev in self.devices:
+                rec = self[dev]
+                if rec.aborted:
+                    self._aborted = True
+                    break
+        return self._aborted
 
 
 class MiesStimulus(stimuli.Stimulus):
