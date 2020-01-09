@@ -714,11 +714,11 @@ class MiesStimulus(stimuli.Stimulus):
             if notebook['Distributed DAQ'] == 1.0:
                 ddaq_delay = notebook['Delay distributed DAQ'] * 1e-3
                 for dev in rec.parent.devices:
-                    rec = rec.parent[dev]
-                    if rec is self._recording:
+                    rec2 = rec.parent[dev]
+                    if rec2 is self._recording:
                         break
-                    _, epochs = rec._stim_wave_note()
-                    for ep in epochs:
+                    _, epochs2 = rec2._stim_wave_note()
+                    for ep in epochs2:
                         dt = float(ep.get('Duration', 0)) * 1e-3
                         t += dt
                     t += ddaq_delay
