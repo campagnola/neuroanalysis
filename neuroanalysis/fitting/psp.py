@@ -195,6 +195,7 @@ def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, baseline
     """           
     import pyqtgraph as pg
     prof = pg.debug.Profiler(disabled=True, delayed=False)
+    prof("args: %s %s %s %s %s %s %s %s" % (search_window, clamp_mode, sign, exp_baseline, baseline_like_psp, refine, init_params, fit_kws))
     
     if ui is not None:
         ui.clear()
@@ -237,6 +238,8 @@ def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, baseline
     data_max = data.data.max()
     data_mean = data.mean()
     
+    baseline_mean = data.time_slice(None, search_window[0]).mean()
+    
     # set initial conditions depending on whether in voltage or current clamp
     # note that sign of these will automatically be set later on based on the 
     # the *sign* input
@@ -269,7 +272,7 @@ def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, baseline
         
     # initial condition, lower boundary, upper boundary
     base_params = {
-        'yoffset': (init_params.get('yoffset', data_mean), -1.0, 1.0),
+        'yoffset': (init_params.get('yoffset', baseline_mean), data_min, data_max),
         'rise_time': (rise_time_init, rise_time_init/10., rise_time_init*10.),
         'decay_tau': (decay_tau_init, decay_tau_init/10., decay_tau_init*10.),
         'rise_power': (2, 'fixed'),
@@ -355,13 +358,13 @@ def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, baseline
         amp = [{'amp': (amp_init, -amp_max, amp_max)}, {'amp': (-amp_init, -amp_max, amp_max)}]
         search_params.append(amp)
 
-    prof("prepare for fine fit")
+    prof("prepare for fine fit %r" % base_params)
 
     # Find best fit 
     search = SearchFit(psp, search_params, params=base_params, x=data.time_values, data=data.data, fit_kws=fit_kws, method=method)
     for i,result in enumerate(search.iter_fit()):
         pass
-        # prof('  fine fit iteration %d/%d: %s %s' % (i, len(search), result['param_index'], result['params']))
+        prof('  fine fit iteration %d/%d: %s %s' % (i, len(search), result['param_index'], result['params']))
     fit = search.best_result
     prof('fine fit done (%d iter)' % len(search))
 
