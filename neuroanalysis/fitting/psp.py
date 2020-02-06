@@ -5,6 +5,7 @@ import numpy as np
 import scipy.optimize
 from ..data import Trace
 from ..util.data_test import DataTestCase
+from ..baseline import float_mode
 from .fitmodel import FitModel
 from .searchfit import SearchFit
 
@@ -238,7 +239,7 @@ def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, baseline
     data_max = data.data.max()
     data_mean = data.mean()
     
-    baseline_mean = data.time_slice(None, search_window[0]).mean()
+    baseline_mode = float_mode(data.time_slice(None, search_window[0]).data)
     
     # set initial conditions depending on whether in voltage or current clamp
     # note that sign of these will automatically be set later on based on the 
@@ -272,7 +273,7 @@ def fit_psp(data, search_window, clamp_mode, sign=0, exp_baseline=True, baseline
         
     # initial condition, lower boundary, upper boundary
     base_params = {
-        'yoffset': (init_params.get('yoffset', baseline_mean), data_min, data_max),
+        'yoffset': (init_params.get('yoffset', baseline_mode), data_min, data_max),
         'rise_time': (rise_time_init, rise_time_init/10., rise_time_init*10.),
         'decay_tau': (decay_tau_init, decay_tau_init/10., decay_tau_init*10.),
         'rise_power': (2, 'fixed'),
